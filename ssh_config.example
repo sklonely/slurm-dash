@@ -1,0 +1,64 @@
+# Dedicated SSH config for the SLURM status dashboard
+# (collect.sh + server.py). Used via:
+#     ssh -F ssh_config dash-submit "<cmd>"
+#
+# WHY THIS EXISTS
+#   Keep ONE warm, multiplexed connection reused across every refresh and live
+#   log stream, so we almost never pay a full (gateway-hop + key-auth) reconnect
+#   on a busy submit node. Fewer handshakes = LESS load on OSU's side AND a
+#   steadier connection on ours. Both hops (gateway + submit) are multiplexed.
+#
+# ISOLATION
+#   Dedicated Host aliases + dedicated ControlPaths (dash-gw-* / dash-sub-*) mean
+#   this can never collide with or disturb the user's interactive ~/.ssh/config
+#   masters. `ssh -F` also makes ssh ignore ~/.ssh/config, so this file is
+#   self-contained. Host-key checking still uses the default ~/.ssh/known_hosts.
+#
+# NODE CHOICE (submit-a / submit-b / submit-c)
+#   We deliberately use the generic round-robin name `submit.hpc.engr...`.
+#   ControlMaster pins us to whichever node the first connection lands on for the
+#   master's lifetime (stable, reuses one connection); if that connection dies,
+#   the next reconnect re-rolls the round-robin (automatic failover). We do NOT
+#   hard-pin a node -- load shifts (submit-b was measured ~1.5x oversubscribed,
+#   submit-c the lightest), and round-robin DNS is not load-aware anyway.
+#
+# INSTALL NOTE
+#   install.sh generates `ssh_config` from this template by replacing
+#   __SLURM_USER__ and __SSH_IDENTITY__ with values from config.env.
+
+Host dash-gateway
+    HostName access.engr.oregonstate.edu
+    User __SLURM_USER__
+    IdentityFile __SSH_IDENTITY__
+    IdentitiesOnly yes
+    BatchMode yes
+    ConnectTimeout 20
+    ControlMaster auto
+    ControlPath ~/.ssh/cm/dash-gw-%C
+    ControlPersist 1800
+    ServerAliveInterval 30
+    ServerAliveCountMax 4
+    TCPKeepAlive yes
+    # NOTE: Compression is intentionally OFF. It would shift CPU onto the submit
+    # node (the sender compresses) -- and the submit node's scarce resource is
+    # CPU/load (measured 37-98), not bandwidth. The right way to be gentle is to
+    # send LESS (query less often), not to compress what we do send.
+
+Host dash-submit
+    HostName submit.hpc.engr.oregonstate.edu
+    User __SLURM_USER__
+    ProxyJump dash-gateway
+    IdentityFile __SSH_IDENTITY__
+    IdentitiesOnly yes
+    BatchMode yes
+    ConnectTimeout 20
+    ControlMaster auto
+    ControlPath ~/.ssh/cm/dash-sub-%C
+    ControlPersist 1800
+    ServerAliveInterval 30
+    ServerAliveCountMax 4
+    TCPKeepAlive yes
+    # NOTE: Compression is intentionally OFF. It would shift CPU onto the submit
+    # node (the sender compresses) -- and the submit node's scarce resource is
+    # CPU/load (measured 37-98), not bandwidth. The right way to be gentle is to
+    # send LESS (query less often), not to compress what we do send.

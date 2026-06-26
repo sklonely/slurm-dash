@@ -1,0 +1,1661 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>OSU HPC Dashboard</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg:#f7f7f4;--bg-card:#ffffff;--bg-card-2:#fafaf7;--bg-inset:#f0efea;
+  --border:rgba(0,0,0,.08);--border-strong:rgba(0,0,0,.16);
+  --text:#1a1a17;--text-2:#5e5d57;--text-3:#93928a;
+  --accent:#c4421f;--accent-2:#f0c419;--link:#2858d6;
+  --load-hot:#d63838;--load-mid:#f0a929;--load-ok:#2da64c;--load-mine:#2858d6;
+  --running:#2da64c;--pending:#f0a929;
+  --font-sans:'Geist',ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --font-mono:'JetBrains Mono','Geist Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  --radius:6px;--radius-lg:10px;
+}
+[data-theme="dark"] {
+  --bg:#0d0d0c;--bg-card:#161614;--bg-card-2:#1d1d1a;--bg-inset:#0a0a09;
+  --border:rgba(255,255,255,.08);--border-strong:rgba(255,255,255,.18);
+  --text:#ecebe5;--text-2:#97968d;--text-3:#5d5c54;
+  --accent:#ed6a3a;--accent-2:#f5cd47;--link:#82a9ff;
+  --load-hot:#ed5050;--load-mid:#f4b134;--load-ok:#44c264;--load-mine:#82a9ff;
+  --running:#44c264;--pending:#f4b134;
+}
+[data-theme="terminal"] {
+  --bg:#050807;--bg-card:#0a100e;--bg-card-2:#0e1614;--bg-inset:#030605;
+  --border:rgba(120,255,180,.12);--border-strong:rgba(120,255,180,.28);
+  --text:#c5ffd4;--text-2:#6cc88e;--text-3:#3d7a55;
+  --accent:#5fff9a;--accent-2:#f5cd47;--link:#5ad9ff;
+  --load-hot:#ff6b6b;--load-mid:#ffd23f;--load-ok:#5fff9a;--load-mine:#5ad9ff;
+  --running:#5fff9a;--pending:#ffd23f;
+  --font-sans:'JetBrains Mono',monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text); font-family: var(--font-sans);
+  font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11','ss01';
+}
+.mono { font-family: var(--font-mono); font-feature-settings: 'zero','ss01'; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+.shell { max-width: 1320px; margin: 0 auto; padding: 24px 28px 80px; }
+
+/* — Title — */
+.v2-title { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+.v2-title h1 {
+  font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0;
+  background: linear-gradient(90deg, var(--accent), var(--load-mine));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.v2-title .who { margin-left: 12px; font-size: 12px; color: var(--text-3); font-weight: 400; font-family: var(--font-mono); }
+.v2-title .meta { display: flex; align-items: center; gap: 14px; font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
+.refctl {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 10px; border: 1px solid var(--border); background: var(--bg-card);
+  border-radius: 999px; font-family: var(--font-mono); font-size: 11px; color: var(--text-2);
+}
+.refctl .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--running); animation: pulse-running 2s infinite; }
+.refctl button { background: transparent; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.refctl button:hover { color: var(--text); }
+.refctl select {
+  background: transparent; border: 0; padding: 0 2px; font: inherit; color: inherit;
+  font-family: var(--font-mono); font-size: 11px; cursor: pointer; appearance: none;
+}
+.refctl .err { color: var(--load-hot); }
+@keyframes pulse-running {
+  0%   { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  70%  { box-shadow: 0 0 0 5px transparent; opacity: .7; }
+  100% { opacity: 1; }
+}
+
+/* — Account row — */
+.account {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px;
+  background: var(--border); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 22px;
+}
+.account .cell { background: var(--bg-card); padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 6px; }
+.account .cell .lbl { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.account .cell .val { font-family: var(--font-mono); font-size: 18px; font-weight: 500; letter-spacing: -0.01em; color: var(--text); }
+.account .cell .val .unit { color: var(--text-3); font-size: 13px; margin-left: 2px; }
+.account .cell .sub { font-size: 11px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+.bar-mini { flex: 1; height: 4px; border-radius: 2px; background: var(--bg-inset); overflow: hidden; position: relative; }
+.bar-mini .fill { height: 100%; background: var(--text); border-radius: 2px; transition: width .4s ease; }
+.bar-mini .fill.hot { background: var(--load-hot); }
+.bar-mini .fill.mid { background: var(--load-mid); }
+.bar-mini .fill.ok  { background: var(--load-ok); }
+.dim { color: var(--text-3); }
+
+/* — Section header — */
+.sec2 { display: flex; align-items: baseline; justify-content: space-between; margin: 24px 0 10px; }
+.sec2 h2 { font-size: 13px; font-weight: 600; margin: 0; letter-spacing: -0.005em; display: flex; align-items: baseline; gap: 8px; }
+.sec2 h2 .count { font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; color: var(--text-3); background: var(--bg-inset); padding: 1px 7px; border-radius: 3px; }
+.sec2 .hint { font-size: 10.5px; color: var(--text-3); font-family: var(--font-mono); }
+
+/* — 2-column dash row: my jobs frame (left, wide) + device map (right, narrow status bar) — */
+.dash-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px;
+  margin-bottom: 16px;
+}
+.my-jobs-frame {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px 16px 16px;
+  display: flex; flex-direction: column; gap: 14px; min-width: 0;
+}
+.my-jobs-frame .frame-h {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border);
+}
+.my-jobs-frame .frame-h .ttl {
+  font-size: 13px; font-weight: 700; letter-spacing: -0.005em;
+}
+.my-jobs-frame .frame-h .summary {
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--text-3);
+}
+.my-jobs-frame .frame-h .summary .r { color: var(--running); font-weight: 600; }
+.my-jobs-frame .frame-h .summary .p { color: var(--pending); font-weight: 600; }
+.my-jobs-frame .frame-h .summary .sep { color: var(--text-3); margin: 0 6px; }
+.my-jobs-frame .frame-sec {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-3); font-weight: 600; margin-top: -4px;
+}
+.my-jobs-frame .frame-sec .count {
+  background: var(--bg-inset); padding: 1px 7px; border-radius: 3px;
+  font-size: 10.5px; color: var(--text-2); text-transform: none;
+  letter-spacing: 0; font-weight: 500;
+}
+.my-jobs-frame .frame-sec .hint {
+  font-size: 10px; color: var(--text-3); font-weight: 500; text-transform: none; letter-spacing: 0;
+}
+.my-jobs-frame .empty {
+  padding: 18px 0; text-align: center; color: var(--text-3);
+  font-family: var(--font-mono); font-size: 11px;
+}
+/* Inside-frame run-grid uses smaller min width since column is narrower */
+.my-jobs-frame .run-grid { margin-bottom: 0; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.my-jobs-frame .pend-list { margin-bottom: 0; }
+
+/* — Device map — */
+.devmap {
+  display: grid; grid-template-columns: repeat(5, 1fr) auto; gap: 0;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 22px;
+}
+/* Vertical variant (used inside .dash-row right column) */
+.devmap.vertical {
+  grid-template-columns: 1fr;
+  margin-bottom: 0;
+  align-self: start;
+}
+.devmap.vertical .dm-tile {
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+}
+.devmap.vertical .dm-tile:last-of-type {
+  border-bottom: 1px solid var(--border);
+}
+.devmap.vertical .dm-other {
+  min-width: auto;
+  background: var(--bg-card-2);
+}
+.devmap .dm-tile {
+  padding: 12px 14px; border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 6px; position: relative;
+  cursor: pointer; transition: background .15s;
+}
+.devmap .dm-tile:hover { background: var(--bg-card-2); }
+.devmap .dm-tile.mine { background: color-mix(in srgb, var(--load-mine) 6%, transparent); }
+.devmap .dm-tile .star { position: absolute; top: 8px; right: 10px; font-size: 10px; color: var(--load-mine); }
+.devmap .dm-head { display: flex; align-items: baseline; gap: 6px; }
+.devmap .dm-name { font-family: var(--font-mono); font-size: 13px; font-weight: 700; }
+.devmap .dm-gpu { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); }
+.devmap .dm-bar { height: 6px; background: var(--bg-inset); border-radius: 3px; overflow: hidden; position: relative; }
+.devmap .dm-bar .fill { height: 100%; border-radius: 3px; transition: width .3s; }
+.devmap .dm-bar .fill.hot { background: var(--load-hot); }
+.devmap .dm-bar .fill.mid { background: var(--load-mid); }
+.devmap .dm-bar .fill.ok  { background: var(--load-ok); }
+.devmap .dm-foot { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-2); }
+.devmap .dm-foot .pct { font-weight: 600; color: var(--text); }
+.devmap .dm-foot .rp .r { color: var(--running); }
+.devmap .dm-foot .rp .p { color: var(--pending); }
+.devmap .dm-foot .rp .sep { color: var(--text-3); margin: 0 3px; }
+.devmap .dm-mine { font-family: var(--font-mono); font-size: 10px; color: var(--load-mine); font-weight: 600; }
+.devmap .dm-other {
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;
+  cursor: pointer; background: var(--bg-card-2); font-family: var(--font-mono);
+  font-size: 10.5px; color: var(--text-2); min-width: 110px;
+}
+.devmap .dm-other .lbl { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); font-weight: 600; }
+
+/* — Running grid — */
+.run-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.run-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+  font-size: 12px; position: relative; transition: border-color .15s, transform .15s;
+}
+.run-card:hover { border-color: var(--border-strong); }
+.run-card.clickable { cursor: pointer; }
+.run-card.clickable:hover { border-color: var(--accent); transform: translateY(-1px); }
+.clickable-row { cursor: pointer; }
+.clickable-row:hover td { background: var(--bg-card); }
+
+/* — Live job-log modal — */
+.jl-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,.55); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.jl-modal {
+  width: min(1100px, 94vw); height: min(80vh, 760px);
+  background: var(--bg-card); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); display: flex; flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0,0,0,.5); overflow: hidden;
+}
+.jl-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.jl-title { font-family: var(--font-mono); font-weight: 600; font-size: 13px; }
+.jl-title .jl-id { color: var(--text-3); font-weight: 400; font-size: 11px; }
+.jl-state { font-family: var(--font-mono); font-size: 10px; padding: 2px 7px; border-radius: 4px; background: var(--bg); color: var(--text-2); border: 1px solid var(--border); }
+.jl-state.run { color: var(--load-ok); border-color: var(--load-ok); }
+.jl-status { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-3); }
+.jl-close { background: transparent; border: 0; color: var(--text-2); cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 4px; }
+.jl-close:hover { color: var(--text); }
+.jl-body {
+  flex: 1; margin: 0; padding: 12px 14px; overflow: auto;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5;
+  color: var(--text); background: #0b0d10; white-space: pre-wrap; word-break: break-word;
+}
+.jl-foot { display: flex; gap: 8px; padding: 6px 14px; border-top: 1px solid var(--border); font-family: var(--font-mono); font-size: 10px; color: var(--text-3); }
+.run-card .top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.run-card .nm { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; letter-spacing: -0.005em; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run-card .id { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); }
+.run-card .meta { display: flex; gap: 8px; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-2); flex-wrap: wrap; }
+.run-card .meta .part { color: var(--text); font-weight: 600; }
+.run-card .meta .nodemark { color: var(--text-3); }
+.run-card .meta .gpus { color: var(--load-ok); }
+.run-card .meta .res { color: var(--text-2); }
+.run-card .meta .res .v { color: var(--text); font-weight: 600; }
+
+/* — Resource chips (pending jobs) — */
+.res-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; vertical-align: middle; }
+.res-chips .rchip {
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 600;
+  padding: 1px 6px; border-radius: 3px; letter-spacing: .02em;
+  background: var(--bg-inset); color: var(--text-2);
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.res-chips .rchip .lbl { color: var(--text-3); font-weight: 500; }
+.res-chips .rchip.gpu { background: color-mix(in srgb, var(--load-ok) 14%, transparent); color: var(--load-ok); }
+.res-chips .rchip.cpu { background: color-mix(in srgb, var(--load-mine) 12%, transparent); color: var(--load-mine); }
+.res-chips .rchip.mem { background: color-mix(in srgb, var(--accent-2) 14%, transparent); color: var(--accent-2); }
+.run-card .progress-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.run-card .pbar { height: 4px; background: var(--bg-inset); border-radius: 2px; overflow: hidden; }
+.run-card .pbar .fill { height: 100%; background: var(--running); border-radius: 2px; position: relative; }
+.run-card .pbar .fill::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.25), transparent); animation: shine 2s infinite; }
+@keyframes shine { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+.run-card .runtime { font-family: var(--font-mono); font-size: 11px; color: var(--text); font-weight: 500; }
+.run-card .runtime .lim { color: var(--text-3); }
+.run-card.late { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.run-card.late .qpos { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-family: var(--font-mono); font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-family: var(--font-mono); }
+.badge.pending { background: color-mix(in srgb, var(--pending) 16%, transparent); color: var(--pending); }
+
+/* — Pending list — */
+.pend-list { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 14px; }
+.pend-row {
+  display: grid; grid-template-columns: 86px 1.4fr 130px 100px 1fr;
+  align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--border);
+  font-size: 12px; transition: background .15s;
+}
+.pend-row:first-child { border-top: none; }
+.pend-row:hover { background: var(--bg-card-2); }
+.pend-row .pname { font-family: var(--font-mono); font-weight: 600; }
+.pend-row .pid { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-3); }
+.pend-row .reason { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); text-transform: lowercase; }
+.pend-row .reason.dep { color: var(--load-mid); }
+.pend-row .parts { display: flex; gap: 3px; flex-wrap: wrap; }
+.pend-row .parts .pchip { font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; padding: 2px 6px; border-radius: 3px; background: var(--bg-inset); color: var(--text-2); }
+.pend-row .parts .pchip.first { background: color-mix(in srgb, var(--load-mine) 14%, transparent); color: var(--load-mine); }
+.pend-row .qpos { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
+.pend-row .qpos .me { color: var(--load-mine); font-weight: 600; }
+.pend-row .qpos .tot { color: var(--text-3); }
+.pend-row .qpos.empty { color: var(--text-3); font-style: italic; }
+.pend-row .eta-rel { font-family: var(--font-mono); font-weight: 500; }
+.pend-row .eta-abs { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-3); margin-left: 6px; }
+.pend-row .eta-blocked { font-family: var(--font-mono); font-size: 11px; color: var(--load-mid); }
+
+/* — Shell sessions — */
+.shell-row {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 8px 14px; margin-bottom: 14px; display: flex; align-items: center;
+  gap: 10px; font-size: 11.5px; color: var(--text-2); flex-wrap: wrap;
+}
+.shell-row .lbl { font-family: var(--font-mono); font-size: 10px; letter-spacing: .06em; color: var(--text-3); text-transform: uppercase; font-weight: 600; }
+.shell-chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 10.5px; padding: 3px 8px; background: var(--bg-inset); border-radius: 3px; }
+.shell-chip .sh { color: var(--text-3); }
+.shell-chip .nodemark { color: var(--text-2); font-weight: 600; }
+.shell-chip .rt { color: var(--text-3); }
+
+/* — Node panels — */
+.node-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 14px; overflow: hidden; }
+.node-panel .np-h {
+  padding: 10px 14px; display: flex; align-items: baseline; justify-content: space-between;
+  border-bottom: 1px solid var(--border); background: var(--bg-card-2);
+}
+.node-panel .np-h .title { font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
+.node-panel .np-h .sub { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-3); }
+.node-panel .np-h .mine-tag { color: var(--load-mine); font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; }
+.node-panel .np-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--border); }
+.node-card { background: var(--bg-card); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.node-card .ncard-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.node-card .ncard-h .nm { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; }
+.node-card.mine .ncard-h .nm::before { content: '★'; color: var(--load-mine); margin-right: 4px; }
+.node-card .ncard-h .spec { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-3); }
+.node-card .ncard-h .stats { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-2); }
+.node-card .ncard-h .pct { font-weight: 600; color: var(--text); }
+.node-card .ncard-bar { height: 6px; background: var(--bg-inset); border-radius: 3px; overflow: hidden; }
+.node-card .ncard-bar .fill { height: 100%; border-radius: 3px; background: var(--load-mid); transition: width .3s; }
+.node-card .ncard-bar .fill.hot { background: var(--load-hot); }
+.node-card .ncard-bar .fill.ok  { background: var(--load-ok); }
+
+/* — Node availability status pill — */
+.node-card .nstatus {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase;
+  padding: 1px 6px; border-radius: 3px; display: inline-flex; align-items: center; gap: 4px;
+}
+.node-card .nstatus::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.node-card .nstatus.ready { background: color-mix(in srgb, var(--load-ok) 15%, transparent);  color: var(--load-ok); }
+.node-card .nstatus.drain { background: color-mix(in srgb, var(--load-mid) 18%, transparent); color: var(--load-mid); }
+.node-card .nstatus.down  { background: color-mix(in srgb, var(--load-hot) 18%, transparent); color: var(--load-hot); }
+.node-card .nstatus.resv  { background: color-mix(in srgb, var(--load-mine) 16%, transparent); color: var(--load-mine); }
+.node-card.drained { opacity: .82; }
+
+/* — Collapsible node panel header — */
+.node-panel .np-h.clickable { cursor: pointer; user-select: none; }
+.node-panel .np-h.clickable:hover { background: var(--bg-inset); }
+.node-panel .np-h .np-chev { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); margin-right: 6px; }
+
+/* — Multi-resource bars on node cards — */
+.node-card .ncard-res { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 8px; align-items: center; row-gap: 4px; }
+.node-card .ncard-res .rlbl { font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: .04em; color: var(--text-3); text-transform: uppercase; }
+.node-card .ncard-res .rbar { height: 5px; background: var(--bg-inset); border-radius: 3px; overflow: hidden; min-width: 0; }
+.node-card .ncard-res .rbar .fill { height: 100%; border-radius: 3px; transition: width .3s; }
+.node-card .ncard-res .rbar .fill.hot { background: var(--load-hot); }
+.node-card .ncard-res .rbar .fill.mid { background: var(--load-mid); }
+.node-card .ncard-res .rbar .fill.ok  { background: var(--load-ok); }
+.node-card .ncard-res .rval { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-2); white-space: nowrap; }
+.node-card .ncard-res .rval .pct { color: var(--text); font-weight: 600; }
+.node-card .ncard-res .rval .full { color: var(--text-3); }
+.node-card .ncard-jobs { display: flex; flex-direction: column; gap: 2px; font-family: var(--font-mono); font-size: 10.5px; }
+.ncj-row { display: grid; grid-template-columns: 90px 1fr 50px 90px; gap: 8px; padding: 2px 0; color: var(--text-2); align-items: baseline; }
+.ncj-row.mine { color: var(--load-mine); font-weight: 600; }
+.ncj-row.is-shell { color: var(--text-3); font-style: italic; }
+.ncj-row .user { font-weight: 500; }
+.ncj-row .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ncj-row .res  { text-align: right; color: var(--text-3); }
+.ncj-row .lim  { text-align: right; color: var(--text-3); }
+.ncj-row.mine .res, .ncj-row.mine .lim { color: var(--load-mine); }
+
+/* — Disclosure (queue table) — */
+.disc { margin-top: 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.disc-h { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; cursor: pointer; user-select: none; font-size: 12px; transition: background .15s; }
+.disc-h:hover { background: var(--bg-card-2); }
+.disc-h .left { display: flex; align-items: center; gap: 10px; }
+.disc-h .chev { width: 12px; display: inline-block; color: var(--text-3); transition: transform .2s; font-family: var(--font-mono); }
+.disc.open > .disc-h .chev { transform: rotate(90deg); }
+.disc-h .title { font-weight: 600; font-size: 12.5px; }
+.disc-h .sub { font-family: var(--font-mono); color: var(--text-3); font-size: 11px; }
+.disc-h .right { display: flex; align-items: center; gap: 12px; font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
+.disc-body { display: none; border-top: 1px solid var(--border); }
+.disc.open > .disc-body { display: block; }
+
+.qtable2 { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 11.5px; }
+.qtable2 th, .qtable2 td { text-align: left; padding: 7px 14px; border-top: 1px solid var(--border); }
+.qtable2 th { font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); background: var(--bg-card-2); font-weight: 600; border-top: none; }
+.qtable2 tr.mine td { color: var(--load-mine); font-weight: 600; background: color-mix(in srgb, var(--load-mine) 5%, transparent); }
+.qtable2 tr.mine td:first-child::before { content: '★ '; }
+.qtable2 td.state-running { color: var(--running); }
+.qtable2 .gap-row td { text-align: center; color: var(--text-3); font-style: italic; background: var(--bg-inset); padding: 5px; font-size: 10.5px; }
+
+@media (max-width: 980px) {
+  .dash-row { grid-template-columns: 1fr; }
+  .devmap { grid-template-columns: repeat(2, 1fr); }
+  .devmap.vertical { grid-template-columns: repeat(2, 1fr); }
+  .devmap.vertical .dm-tile { border-bottom: none; border-right: 1px solid var(--border); }
+  .node-panel .np-grid { grid-template-columns: 1fr; }
+  .pend-row { grid-template-columns: 1fr 1fr; }
+  .pend-row .parts, .pend-row .qpos { display: none; }
+  .account { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ─────────────────────────── helpers ───────────────────────────
+
+function parseSlurmTime(s) {
+  // "MM:SS" / "H:MM:SS" / "HH:MM:SS" / "D-HH:MM:SS" → seconds. UNLIMITED → Infinity.
+  if (!s || s === 'UNLIMITED' || s === 'INVALID' || s === 'N/A' || s === '0:00') return null;
+  if (s === 'UNLIMITED') return Infinity;
+  let total = 0, rest = s;
+  if (s.includes('-')) {
+    const [d, t] = s.split('-');
+    total += parseInt(d) * 86400;
+    rest = t;
+  }
+  const ts = rest.split(':').map(x => parseInt(x) || 0);
+  if (ts.length === 3) total += ts[0]*3600 + ts[1]*60 + ts[2];
+  else if (ts.length === 2) total += ts[0]*60 + ts[1];
+  else total += ts[0] || 0;
+  return total;
+}
+
+function fmtRuntime(seconds) {
+  if (seconds == null || !isFinite(seconds)) return '—';
+  const h = Math.floor(seconds/3600), m = Math.floor((seconds%3600)/60), s = Math.floor(seconds%60);
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function fmtTimeLimit(seconds) {
+  if (seconds == null || !isFinite(seconds)) return '∞';
+  const h = Math.floor(seconds/3600), m = Math.floor((seconds%3600)/60);
+  return `${h}:${String(m).padStart(2,'0')}:00`;
+}
+
+// "約 13h 後" + abs "明天 09:00"
+function fmtRelativeAbs(seconds, now = Date.now()) {
+  if (!seconds || seconds < 60) return { rel: '< 1 min', abs: '' };
+  const future = new Date(now + seconds * 1000);
+  const today = new Date(now); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const futureDay = new Date(future); futureDay.setHours(0,0,0,0);
+  const sameDay = futureDay.getTime() === today.getTime();
+  const isTomorrow = futureDay.getTime() === tomorrow.getTime();
+  const hh = String(future.getHours()).padStart(2,'0'), mm = String(future.getMinutes()).padStart(2,'0');
+  let rel;
+  if (seconds < 3600)         rel = `約 ${Math.round(seconds/60)} min 後`;
+  else if (seconds < 86400)   rel = `約 ${Math.round(seconds/3600)}h 後`;
+  else if (seconds < 86400*2) rel = `明天`;
+  else                        rel = `${Math.round(seconds/86400)} 天後`;
+  let abs;
+  if (sameDay)         abs = `${hh}:${mm}`;
+  else if (isTomorrow) abs = `明天 ${hh}:${mm}`;
+  else                 abs = `${future.getMonth()+1}/${future.getDate()} ${hh}:${mm}`;
+  return { rel, abs };
+}
+
+function loadCategory(pct) {
+  if (pct >= 0.85) return 'hot';
+  if (pct >= 0.50) return 'mid';
+  return 'ok';
+}
+
+// Slurm node state → whether the node accepts new jobs.
+//   draining/drained → 排空中/已排空，不收新任務
+//   down/fail/unknown → 離線
+//   reserved/maint    → 保留中
+//   idle/mixed/allocated/completing → 正常接受新任務
+function nodeStatus(state) {
+  // Strip Slurm state-flag suffixes (* ~ # ! % $ @ ^ + -) before matching.
+  const s = (state || '').toLowerCase().replace(/[*~#!%$@^+-]+$/, '').trim();
+  if (!s) return { label: '—', kind: 'ready', drained: false };
+  if (s.startsWith('down') || s.startsWith('fail') || s.startsWith('unknown') || s.includes('error') || s.includes('nostate'))
+    return { label: 'Down', kind: 'down', drained: true };
+  if (s.startsWith('drained')) return { label: 'Drained', kind: 'drain', drained: true };
+  if (s.startsWith('draining') || s.includes('drng')) return { label: 'Draining', kind: 'drain', drained: true };
+  if (s.startsWith('reserved') || s.startsWith('resv') || s.startsWith('maint'))
+    return { label: 'Reserved', kind: 'resv', drained: false };
+  return { label: 'Ready', kind: 'ready', drained: false };
+}
+
+const SHELL_NAMES = new Set(['zsh','bash','fish','sh','jupyter','interactive']);
+function isShellName(name) {
+  if (!name) return false;
+  const n = name.toLowerCase().trim();
+  if (SHELL_NAMES.has(n)) return true;
+  if (n.startsWith('ood-jupyter') || n === 'ood-shell') return true;
+  // Names like "t2b_hjarch (zsh)" — interactive wrapper around a script
+  if (/\((zsh|bash|sh|fish|jupyter)\)\s*$/i.test(name)) return true;
+  return false;
+}
+
+function gpuCountFromGres(gres) {
+  // Slurm formats: 'gres/gpu:4', 'gres/gpu=4', 'gpu:4', 'gpu:h100-80g:8', 'gpu:8(S:0-1)', 'N/A', '(null)'
+  if (!gres || gres === 'N/A' || gres === '(null)') return null;
+  // Strip socket constraint suffix "(S:0-1)" then take the trailing :N or =N
+  const cleaned = gres.replace(/\([^)]*\)/g, '').trim();
+  const m = cleaned.match(/[:=](\d+)\s*$/);
+  return m ? parseInt(m[1]) : null;
+}
+
+function parseSlurmMem(memStr) {
+  // Slurm memory: "9000M", "16G", "1.5T", "16000" (assume MB), "0" → MB.
+  if (memStr == null) return 0;
+  const s = String(memStr).trim();
+  if (!s || s === '0' || s === 'N/A') return 0;
+  const m = s.match(/^(\d+(?:\.\d+)?)\s*([KMGT]?)/i);
+  if (!m) return 0;
+  const n = parseFloat(m[1]);
+  const u = (m[2] || 'M').toUpperCase();
+  const mult = { K: 1/1024, M: 1, G: 1024, T: 1024*1024 }[u] || 1;
+  return n * mult;
+}
+
+function fmtMem(mb) {
+  // 0 → "—"; < 1024 → "512M"; < 1M → "16G"; else "1.5T"
+  if (mb == null || mb <= 0) return '—';
+  if (mb < 1024) return `${Math.round(mb)}M`;
+  const g = mb / 1024;
+  if (g < 1024) return `${g >= 100 ? Math.round(g) : g.toFixed(g >= 10 ? 0 : 1)}G`;
+  return `${(g/1024).toFixed(1)}T`;
+}
+
+function gpuKindFromFeatures(features) {
+  const f = (features||'').toLowerCase();
+  if (f.includes('h200')) return 'H200';
+  if (f.includes('h100-40g')) return 'H100-40G';
+  if (f.includes('vram80g') && f.includes('h100')) return 'H100-80G';
+  if (f.includes('h100')) return 'H100';
+  if (f.includes('a100')) return 'A100';
+  if (f.includes('a40')) return 'A40';
+  if (f.includes('v100')) return 'V100';
+  if (f.includes('rtx2080')) return 'RTX 2080';
+  if (f.includes('rtx8000')) return 'RTX 8000';
+  return 'GPU';
+}
+
+function vramPerGpu(kind) {
+  // GB per GPU. Conservative default for ambiguous "H100" (cluster has both 40G and 80G nodes).
+  const k = (kind||'').toUpperCase().replace(/\s+/g, '');
+  if (k.includes('H100-80G')) return 80;
+  if (k.includes('H100-40G')) return 40;
+  if (k.includes('H200'))      return 141;
+  if (k.includes('H100'))      return 40;
+  if (k.includes('A100'))      return 80;
+  if (k === 'A40')             return 48;
+  if (k === 'V100')            return 32;
+  if (k.includes('RTX8000'))   return 48;
+  if (k.includes('RTX2080'))   return 11;
+  return 0;
+}
+
+function parseEta(startTimeStr) {
+  if (!startTimeStr || startTimeStr === 'N/A' || startTimeStr === 'Unknown' || startTimeStr === '') return null;
+  const t = Date.parse(startTimeStr);
+  if (isNaN(t)) return null;
+  const diff = Math.floor((t - Date.now()) / 1000);
+  return diff > 0 ? diff : null;
+}
+
+// ─────────────────────────── mapper ───────────────────────────
+// Convert raw JSON from hpc_status_dump.sh into the shape the v2 design expects.
+
+const PARTITION_DEFS = [
+  { id: 'dgxh',   label: 'DGXH',   gpu: 'H100 / H200' },
+  { id: 'dgx2',   label: 'DGX2',   gpu: 'V100' },
+  { id: 'gpu',    label: 'GPU',    gpu: 'RTX 8000' },
+  { id: 'ampere', label: 'AMPERE', gpu: 'A40 / A100' },
+  { id: 'share',  label: 'SHARE',  gpu: 'mixed CPU+GPU' },
+];
+const OTHER_DEFS = [
+  { id: 'eecs', label: 'EECS', gpu: 'RTX 2080' },
+  { id: 'dgxs', label: 'DGXS', gpu: '(idle)' },
+];
+
+function buildPartitions(partCounts, queue) {
+  const pcByName = Object.fromEntries((partCounts||[]).map(p => [p.name, p]));
+
+  // Count my running/pending per partition (a multi-partition job counts for each candidate)
+  const mineByPart = {};
+  for (const j of (queue||[])) {
+    const isShell = isShellName(j.name);
+    if (isShell) continue;  // shells don't count toward partition load
+    const parts = (j.partition||'').split(',').map(s => s.trim()).filter(Boolean);
+    for (const p of parts) {
+      mineByPart[p] = mineByPart[p] || { running: 0, pending: 0 };
+      if (j.state === 'RUNNING') mineByPart[p].running++;
+      else if (j.state === 'PENDING') mineByPart[p].pending++;
+    }
+  }
+
+  const mk = info => {
+    const c = pcByName[info.id] || { running: 0, pending: 0, nodes_total: 0, nodes_alloc: 0 };
+    const m = mineByPart[info.id] || { running: 0, pending: 0 };
+    return {
+      id: info.id, label: info.label, gpu: info.gpu,
+      nodes_total: c.nodes_total,
+      nodes_alloc: c.nodes_alloc,
+      pct_load: c.nodes_total > 0 ? c.nodes_alloc / c.nodes_total : 0,
+      running: c.running,
+      pending: c.pending,
+      mine_running: m.running,
+      mine_pending: m.pending,
+    };
+  };
+
+  return {
+    partitions: PARTITION_DEFS.map(mk),
+    others: OTHER_DEFS.map(o => mk(o)),
+  };
+}
+
+function buildNodes(rawNodes, rawNodeJobs, partitionId) {
+  const jobsByNode = {};
+  for (const j of (rawNodeJobs||[])) {
+    if (j.state !== 'RUNNING') continue;
+    (jobsByNode[j.node] = jobsByNode[j.node] || []).push(j);
+  }
+  return (rawNodes||[]).map(n => {
+    const njobs = (jobsByNode[n.name] || []).slice().sort((a,b) => (b.is_mine - a.is_mine));
+    const mineJobs = njobs.filter(j => j.is_mine).length;
+    const cpuPct = n.cpu_total > 0 ? Math.round(n.cpu_alloc / n.cpu_total * 100) : 0;
+    const gpuTotal = n.gpu_total != null ? n.gpu_total : (gpuCountFromGres(n.gres) || 0);
+    const gpuAlloc = n.gpu_alloc != null ? n.gpu_alloc : 0;
+    const gpuPct = gpuTotal > 0 ? Math.round(gpuAlloc / gpuTotal * 100) : 0;
+    const kind = gpuKindFromFeatures(n.features);
+    const vramPer = vramPerGpu(kind);
+    const vramTotalGb = vramPer * gpuTotal;
+    const vramAllocGb = vramPer * gpuAlloc;
+    const vramPct = vramTotalGb > 0 ? Math.round(vramAllocGb / vramTotalGb * 100) : 0;
+    const spec = gpuTotal > 0 ? `${gpuTotal}×${kind}` : (kind || 'compute');
+    return {
+      id: n.name,
+      spec,
+      state: n.state || '',
+      cpu_alloc: n.cpu_alloc || 0,
+      cpu_total: n.cpu_total || 0,
+      cpu_pct: cpuPct,
+      gpu_alloc: gpuAlloc,
+      gpu_total: gpuTotal,
+      gpu_pct: gpuPct,
+      vram_alloc_gb: vramAllocGb,
+      vram_total_gb: vramTotalGb,
+      vram_pct: vramPct,
+      jobs_n: njobs.length,
+      mine: mineJobs > 0 ? 1 : 0,
+      jobs: njobs.map(j => ({
+        user: j.user,
+        name: j.name,
+        cpus: parseInt(j.cpus) || j.cpus,
+        limit: j.timelimit,
+        mine: j.is_mine,
+        shell: isShellName(j.name),
+      })),
+    };
+  });
+}
+
+function buildPendingLookup(rawQueue) {
+  // Walk a partition's queue (already priority-sorted by dump) and find my PENDING jobs' positions + ETAs.
+  const lookup = {};
+  let pos = 0, total = 0;
+  for (const j of (rawQueue||[])) {
+    if (j.state !== 'PENDING') continue;
+    pos++; total++;
+    if (j.is_mine) {
+      lookup[j.id] = { pos, eta_s: parseEta(j.start_time) };
+    }
+  }
+  for (const k in lookup) lookup[k].total = total;
+  return lookup;
+}
+
+function parseDepRaw(depRaw) {
+  // Slurm `squeue %E` formats: "(null)" | "afterok:12345(unfulfilled)" | "afterany:12345,afterok:67890"
+  if (!depRaw || depRaw === '(null)' || depRaw === '') return null;
+  // Take the first dependency (most common case is single)
+  const first = depRaw.split(',')[0].trim();
+  const m = first.match(/^([a-z_]+):(\d+)(?:\(([^)]+)\))?/i);
+  if (!m) return { type: '?', blocker: null, status: depRaw };
+  return { type: m[1], blocker: m[2], status: m[3] || 'pending' };
+}
+
+function buildMyJobs(queue, pendingLookups, resByJobId) {
+  // First pass: build name lookup so we can resolve blocker names
+  const nameById = {};
+  for (const j of (queue||[])) nameById[j.id] = j.name;
+
+  // pendingLookups: { dgxh: {...}, dgx2: {...}, gpu: {...}, ampere: {...} }
+  return (queue||[]).map(j => {
+    const runtime_s = parseSlurmTime(j.time) || 0;
+    const time_limit_s = parseSlurmTime(j.timelimit) || (24*3600);
+    const partition = j.partition || '';
+    const interactive = isShellName(j.name);
+    const state = j.state === 'RUNNING' && interactive ? 'SHELL'
+                : j.state === 'RUNNING' ? 'RUNNING'
+                : j.state === 'PENDING' ? 'PENDING'
+                : j.state;
+
+    let queue_pos = null, queue_total = null, eta_s = null;
+    if (state === 'PENDING') {
+      const cands = candidates(partition);
+      // Try each candidate partition; prefer the one that has an ETA, otherwise first hit.
+      for (const p of cands) {
+        const src = pendingLookups[p];
+        if (src && src[j.id]) {
+          queue_pos = src[j.id].pos;
+          queue_total = src[j.id].total;
+          if (src[j.id].eta_s != null) { eta_s = src[j.id].eta_s; break; }
+        }
+      }
+    }
+
+    const reasonRaw = (j.reason || '').replace(/[()]/g, '').trim();
+    const isDep = /^Dependency/i.test(reasonRaw);
+    const gpuN = gpuCountFromGres(j.gres);
+    const partKind = candidates_kind(candidates(partition));
+    const gpus = gpuN != null ? `${partKind} ×${gpuN}` : (interactive ? '×0' : '×?');
+    // Fallback: user queue (`squeue -u`) may not have cpus yet (older dump);
+    // partition queues do, so look up by job ID.
+    const enrich = (resByJobId && resByJobId[j.id]) || {};
+    const cpuN = parseInt(j.cpus) || parseInt(enrich.cpus) || 0;
+    // VRAM: estimated GPU memory request = vramPerGpu(kind) × gpu count.
+    // For "mixed" multi-partition jobs we don't know the kind → 0 = chip hidden.
+    const vramGb = (gpuN || 0) * vramPerGpu(partKind);
+    const dep = parseDepRaw(j.dep_raw);
+    if (dep && dep.blocker) dep.blockerName = nameById[dep.blocker] || null;
+
+    return {
+      id: j.id, name: j.name, state, partition,
+      node: j.node || '', runtime_s, time_limit_s,
+      gpus,
+      gpu_n: gpuN || 0,
+      gpu_kind: partKind,
+      cpu_n: cpuN,
+      vram_gb: vramGb,
+      queue_pos, queue_total, eta_s,
+      reason: reasonRaw || (interactive ? 'shell' : ''),
+      dep,
+      shell: interactive ? (j.name||'').toLowerCase() : null,
+    };
+  });
+}
+
+function candidates(partition) {
+  return (partition||'').split(',').map(s => s.trim()).filter(Boolean);
+}
+function candidates_kind(parts) {
+  if (!parts.length) return 'GPU';
+  const map = { dgxh:'H100', dgx2:'V100', gpu:'RTX', ampere:'A40', share:'mixed', eecs:'RTX2080', dgxs:'GPU' };
+  if (parts.length === 1) return map[parts[0]] || 'GPU';
+  return parts.length > 2 ? 'mixed' : `${map[parts[0]]||'?'}/${map[parts[1]]||'?'}`;
+}
+
+function buildQueueRows(rawQueue) {
+  // pos = priority rank within PENDING (1-indexed, since dump --sort=-Q).
+  // RUNNING rows have pos=null and render as "●".
+  let pendingPos = 0;
+  return (rawQueue||[]).map(j => {
+    if (j.state === 'PENDING') pendingPos++;
+    const gpuN = gpuCountFromGres(j.gres);
+    return {
+      pos: j.state === 'RUNNING' ? null : pendingPos,
+      id: j.id, user: j.user, name: j.name,
+      gpus: gpuN != null ? `×${gpuN}` : '—',
+      cpus: parseInt(j.cpus) || 0,
+      est: j.state === 'RUNNING' ? 'RUNNING'
+         : (j.start_time && j.start_time !== 'N/A' && j.start_time !== 'Unknown'
+           ? j.start_time.replace('T', ' ').slice(5, 16) : '—'),
+      mine: j.is_mine,
+      running: j.state === 'RUNNING',
+    };
+  });
+}
+
+function mapAccount(account, savings, cfgUser, cfgGroup) {
+  const a = account || {};
+  const s = savings || {};
+  return {
+    user: cfgUser || '', group: cfgGroup || '',
+    home:  { used: ((a.home_used_mb||0)/1024).toFixed(1),   quota: Math.round((a.home_total_mb||25600)/1024),  unit: 'G' },
+    share: { used: ((a.share_used_mb||0)/1024).toFixed(1),  quota: Math.round((a.share_total_mb||1572864)/1024), unit: 'G' },
+    fairshare: a.fairshare || 0,
+    dgxh_quota: { used: 0, total: Math.round((a.dgxh_gpu_runmins_limit||2880)/60), unit: 'h' },
+    savings: { since: '2026-04-01', usd: Math.round(s.total_savings || 0), gpu_hours: +(s.total_hours || 0).toFixed(1) },
+  };
+}
+
+function mapAll(raw, cfgUser, cfgGroup) {
+  const partInfo = buildPartitions(raw.part_counts, raw.queue);
+  const pendingLookups = {
+    dgxh:   buildPendingLookup(raw.dgxh_queue),
+    dgx2:   buildPendingLookup(raw.dgx2_queue),
+    gpu:    buildPendingLookup(raw.gpu_queue),
+    ampere: buildPendingLookup(raw.ampere_queue),
+  };
+  // Cross-reference cpus/mem from partition queues (which carry %C/%m) into the
+  // per-user queue (which may not yet, depending on dump version).
+  const resByJobId = {};
+  for (const q of [raw.dgxh_queue, raw.dgx2_queue, raw.gpu_queue, raw.ampere_queue]) {
+    for (const j of (q||[])) {
+      if (j.id && (j.cpus || j.mem)) resByJobId[j.id] = { cpus: j.cpus, mem: j.mem };
+    }
+  }
+  return {
+    timestamp: raw.timestamp,
+    account: mapAccount(raw.account, raw.savings, cfgUser, cfgGroup),
+    my_jobs: buildMyJobs(raw.queue, pendingLookups, resByJobId),
+    partitions: partInfo.partitions,
+    others: partInfo.others,
+    dgxh_nodes: buildNodes(raw.dgxh_nodes, raw.dgxh_node_jobs, 'dgxh'),
+    dgx2_nodes: buildNodes(raw.dgx2_nodes, raw.dgx2_node_jobs, 'dgx2'),
+    gpu_nodes: buildNodes(raw.gpu_nodes, raw.gpu_node_jobs, 'gpu'),
+    ampere_nodes: buildNodes(raw.ampere_nodes, raw.ampere_node_jobs, 'ampere'),
+    share_nodes: buildNodes(raw.share_nodes, raw.share_node_jobs, 'share'),
+    dgxh_queue_rows: buildQueueRows(raw.dgxh_queue),
+    dgxh_total_running: (raw.dgxh_queue||[]).filter(j => j.state==='RUNNING').length,
+    dgxh_total_pending: (raw.dgxh_queue||[]).filter(j => j.state==='PENDING').length,
+  };
+}
+
+// ─────────────────────────── components ───────────────────────────
+
+function useNow(intervalMs = 1000) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(t);
+  }, [intervalMs]);
+  return now;
+}
+
+function Header({ user, group, refreshSec, paused, mode, health, onTogglePause, onIntervalChange, onRefresh, lastUpdated, error }) {
+  const now = useNow(1000);
+  const time = new Date(now);
+  const hh = String(time.getHours()).padStart(2,'0');
+  const mm = String(time.getMinutes()).padStart(2,'0');
+  const ss = String(time.getSeconds()).padStart(2,'0');
+  const ageSec = lastUpdated ? Math.floor((now - lastUpdated) / 1000) : null;
+  const stale = ageSec != null && ageSec > Math.max(60, refreshSec * 3);
+  let cadenceLabel, cadenceColor;
+  if (paused) { cadenceLabel = '⏸ paused'; cadenceColor = 'var(--text-3)'; }
+  else if (mode === 'hidden') { cadenceLabel = '⏸ tab hidden'; cadenceColor = 'var(--text-3)'; }
+  else if (mode === 'idle') { cadenceLabel = `○ idle ${IDLE_CADENCE_MS/1000}s`; cadenceColor = undefined; }
+  else { cadenceLabel = `● active ${refreshSec}s`; cadenceColor = 'var(--running)'; }
+  return (
+    <div className="v2-title">
+      <div>
+        <h1>OSU HPC</h1>
+        <span className="who">{user} / {group}</span>
+        <span className="who" style={{marginLeft:14, color: cadenceColor}}>{cadenceLabel}</span>
+        {health && <span className="who" style={{marginLeft:14, color: health.ok ? 'var(--running)' : 'var(--load-hot)'}}>
+          watchdog {health.ok ? '✓' : '✗'} {health.ok ? `(${health.latency_ms}ms)` : (health.reason ? `— ${health.reason}` : '')}
+        </span>}
+        {lastUpdated && <span className="who" style={{marginLeft:14, color: stale ? 'var(--load-hot)' : undefined}}>
+          {stale ? `⚠ stale ${ageSec}s` : `updated ${ageSec}s ago`}
+        </span>}
+        {error && <span className="who" style={{marginLeft:14, color:'var(--load-hot)'}}>⚠ {error}</span>}
+      </div>
+      <div className="meta">
+        <span className="tnum">{hh}:{mm}:{ss}</span>
+        <span className="refctl">
+          <span className="dot" style={{background: paused?'var(--text-3)':'var(--running)', animation: paused?'none':undefined}}/>
+          <button onClick={onRefresh} title="Refresh now">↻</button>
+          <button onClick={onTogglePause}>{paused ? 'auto: OFF' : 'auto'}</button>
+          <select value={refreshSec} onChange={e => onIntervalChange(parseInt(e.target.value))} disabled={paused} title="active-mode cadence">
+            <option value={15}>15s</option>
+            <option value={30}>30s</option>
+            <option value={60}>60s</option>
+            <option value={120}>2m</option>
+            <option value={300}>5m</option>
+          </select>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function Account({ a }) {
+  const homePct = a.home.used / a.home.quota;
+  const sharePct = a.share.used / a.share.quota;
+  return (
+    <div className="account">
+      <div className="cell">
+        <div className="lbl">Home</div>
+        <div className="val tnum">{a.home.used}<span className="unit">/{a.home.quota}{a.home.unit}</span></div>
+        <div className="sub"><div className="bar-mini"><div className={'fill ' + (homePct>.85?'hot':homePct>.5?'mid':'ok')} style={{width:(homePct*100)+'%'}}/></div></div>
+      </div>
+      <div className="cell">
+        <div className="lbl">Share</div>
+        <div className="val tnum">{a.share.used}<span className="unit">G / {(a.share.quota/1024).toFixed(1)}T</span></div>
+        <div className="sub"><div className="bar-mini"><div className={'fill ' + (sharePct>.85?'hot':sharePct>.5?'mid':'ok')} style={{width:(sharePct*100)+'%'}}/></div></div>
+      </div>
+      <div className="cell">
+        <div className="lbl">FairShare</div>
+        <div className="val tnum">{(a.fairshare*100).toFixed(1)}<span className="unit">%</span></div>
+        <div className="sub"><div className="bar-mini"><div className="fill" style={{width:(a.fairshare*100)+'%', background:'var(--accent)'}}/></div></div>
+      </div>
+      <div className="cell">
+        <div className="lbl">DGXH Quota</div>
+        <div className="val tnum">{a.dgxh_quota.used}<span className="unit">/{a.dgxh_quota.total}{a.dgxh_quota.unit}</span></div>
+        <div className="sub dim">max per submit</div>
+      </div>
+      <div className="cell">
+        <div className="lbl">Saved vs Cloud</div>
+        <div className="val tnum">${a.savings.usd}</div>
+        <div className="sub dim">{a.savings.gpu_hours} GPU-h since {a.savings.since.slice(5)}</div>
+      </div>
+    </div>
+  );
+}
+
+function DeviceMap({ partitions, others, vertical }) {
+  const [showOther, setShowOther] = useState(false);
+  return (
+    <div className={'devmap ' + (vertical ? 'vertical' : '')}>
+      {partitions.map(p => {
+        const cat = loadCategory(p.pct_load);
+        const mine = (p.mine_running||0) + (p.mine_pending||0);
+        return (
+          <div key={p.id} className={'dm-tile ' + (mine ? 'mine' : '')}>
+            {mine > 0 && <span className="star">★</span>}
+            <div className="dm-head">
+              <span className="dm-name">{p.label}</span>
+              <span className="dm-gpu">{p.gpu}</span>
+            </div>
+            <div className="dm-bar"><div className={'fill '+cat} style={{width:(p.pct_load*100)+'%'}}/></div>
+            <div className="dm-foot">
+              <span className="pct tnum">{Math.round(p.pct_load*100)}%</span>
+              <span className="rp tnum">
+                <span className="r">{p.running}R</span><span className="sep">·</span><span className="p">{p.pending}P</span>
+              </span>
+            </div>
+            {mine > 0 && (
+              <div className="dm-mine">
+                {p.mine_running ? `${p.mine_running} running` : ''}
+                {p.mine_running && p.mine_pending ? ' · ' : ''}
+                {p.mine_pending ? `${p.mine_pending} pending` : ''}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div className="dm-other" onClick={() => setShowOther(s => !s)}>
+        <div className="lbl">Other</div>
+        {showOther ? others.map(o => (
+          <div key={o.id}>{o.label} <span style={{color:'var(--text-3)'}}>{o.running}R/{o.pending}P</span></div>
+        )) : <div>{others.length} partitions</div>}
+      </div>
+    </div>
+  );
+}
+
+function ResChips({ gpuN, gpuKind, cpuN, vramGb }) {
+  const chips = [];
+  if (gpuN > 0) chips.push(
+    <span key="g" className="rchip gpu" title="GPU 數量">
+      <span className="lbl">GPU</span>{gpuKind}×{gpuN}
+    </span>
+  );
+  if (cpuN > 0) chips.push(
+    <span key="c" className="rchip cpu" title="CPU 核心數">
+      <span className="lbl">CPU</span>{cpuN}c
+    </span>
+  );
+  if (vramGb > 0) chips.push(
+    <span key="v" className="rchip mem" title="GPU 顯存(以 GPU 規格估算)">
+      <span className="lbl">VRAM</span>{vramGb >= 100 ? Math.round(vramGb) : vramGb}G
+    </span>
+  );
+  if (chips.length === 0) return null;
+  return <span className="res-chips">{chips}</span>;
+}
+
+function RunCard({ j, now, base }) {
+  // Locally-advanced elapsed: dump's runtime_s + seconds since that dump landed.
+  const liveRuntime = j.runtime_s + (now && base ? Math.max(0, (now - base) / 1000) : 0);
+  const pct = j.time_limit_s ? Math.min(1, liveRuntime / j.time_limit_s) : 0;
+  const late = j.queue_pos && j.queue_total && j.queue_pos > j.queue_total * 0.9;
+  return (
+    <div className={'run-card clickable ' + (late ? 'late' : '')}
+         title="點擊看 live log" onClick={() => openJobLog(j.id, j.name)}>
+      <div className="top">
+        <span className="nm" title={j.name}>{j.name}</span>
+        <span className="id">#{j.id}</span>
+      </div>
+      <div className="meta">
+        <span className="part">{j.partition}</span>
+        {j.node && <span className="nodemark">on {j.node}</span>}
+        <ResChips gpuN={j.gpu_n} gpuKind={j.gpu_kind} cpuN={j.cpu_n} vramGb={j.vram_gb} />
+        {late && <span className="qpos">#{j.queue_pos}/{j.queue_total}</span>}
+      </div>
+      <div className="progress-row">
+        <div className="pbar"><div className="fill" style={{width:(pct*100)+'%'}}/></div>
+        <span className="runtime tnum">{fmtRuntime(liveRuntime)}<span className="lim">/{fmtTimeLimit(j.time_limit_s)}</span></span>
+      </div>
+    </div>
+  );
+}
+
+function PendRow({ j }) {
+  const parts = candidates(j.partition);
+  const eta = j.eta_s ? fmtRelativeAbs(j.eta_s) : null;
+  const isDep = /dependency/i.test(j.reason);
+  return (
+    <div className="pend-row">
+      <div><span className="badge pending">QUEUED</span></div>
+      <div>
+        <div className="pname">
+          {j.name}
+          <span style={{marginLeft:8, verticalAlign:'middle'}}>
+            <ResChips gpuN={j.gpu_n} gpuKind={j.gpu_kind} cpuN={j.cpu_n} vramGb={j.vram_gb} />
+          </span>
+        </div>
+        <div className="pid">
+          #{j.id}
+          <span className={'reason ' + (isDep ? 'dep' : '')}> · {(j.reason||'').toLowerCase()}</span>
+          {j.dep && j.dep.blocker && (
+            <span className="reason dep" title={`${j.dep.type} ${j.dep.status||''}`}>
+              {' '}← #{j.dep.blocker}{j.dep.blockerName ? ` (${j.dep.blockerName})` : ''}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="parts">
+        {parts.map((p, i) => (
+          <span key={p+i} className={'pchip ' + (i === 0 ? 'first' : '')}>{p}</span>
+        ))}
+      </div>
+      <div className={'qpos ' + (j.queue_pos == null ? 'empty' : '')}>
+        {j.queue_pos != null ? (
+          <>
+            <span className="me">#{j.queue_pos}</span>
+            <span className="tot">/{(j.queue_total||0).toLocaleString()}</span>
+          </>
+        ) : '—'}
+      </div>
+      <div>
+        {eta ? (
+          <>
+            <span className="eta-rel">{eta.rel}</span>
+            {eta.abs && <span className="eta-abs">({eta.abs})</span>}
+          </>
+        ) : isDep && j.dep ? (
+          <span className="eta-blocked" title={j.dep.status || ''}>
+            ⏸ {j.dep.type} on {j.dep.blockerName || `#${j.dep.blocker}`}
+          </span>
+        ) : isDep ? (
+          <span className="eta-blocked">⏸ blocked on dependency</span>
+        ) : (
+          <span className="dim">—</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ShellRow({ shells }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="shell-row">
+      <span className="lbl">Shell sessions</span>
+      <span className="dim">{shells.length} interactive · don't count toward compute</span>
+      <span style={{flex:1}} />
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{background:'transparent', border:0, color:'var(--text-2)', cursor:'pointer', font:'inherit', fontFamily:'var(--font-mono)', fontSize:10.5}}>
+        {open ? 'hide ▴' : 'show all ▾'}
+      </button>
+      {open && (
+        <div style={{flex:'0 0 100%', display:'flex', flexWrap:'wrap', gap:6, marginTop:4}}>
+          {shells.map(s => (
+            <span key={s.id} className="shell-chip">
+              <span className="sh">{s.shell}</span>
+              <span className="nodemark">{s.node || s.partition}</span>
+              <span className="rt">{fmtRuntime(s.runtime_s)}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResBar({ label, alloc, total, pct, fmt }) {
+  const cat = loadCategory(pct/100);
+  return (
+    <>
+      <div className="rlbl">{label}</div>
+      <div className="rbar"><div className={'fill '+cat} style={{width:Math.min(100,pct)+'%'}}/></div>
+      <div className="rval tnum">
+        <span className="pct">{pct}%</span>
+        {' '}<span className="full">{fmt(alloc)}/{fmt(total)}</span>
+      </div>
+    </>
+  );
+}
+
+function NodeCard({ n }) {
+  const idn = x => String(x);
+  const fmtGb = g => g >= 1024 ? `${(g/1024).toFixed(1)}T` : `${g >= 100 ? Math.round(g) : g}G`;
+  const st = nodeStatus(n.state);
+  return (
+    <div className={'node-card ' + (n.mine ? 'mine' : '') + (st.drained ? ' drained' : '')}>
+      <div className="ncard-h">
+        <span className="nm">{n.id}</span>
+        <span className="spec">{n.spec}</span>
+        <span className={'nstatus ' + st.kind} title={'Slurm state: ' + (n.state || 'unknown')}>{st.label}</span>
+        <span className="stats">{n.jobs_n} jobs</span>
+      </div>
+      <div className="ncard-res">
+        <ResBar label="CPU" alloc={n.cpu_alloc} total={n.cpu_total} pct={n.cpu_pct} fmt={idn} />
+        {n.gpu_total > 0 && (
+          <ResBar label="GPU" alloc={n.gpu_alloc} total={n.gpu_total} pct={n.gpu_pct} fmt={idn} />
+        )}
+        {n.vram_total_gb > 0 && (
+          <ResBar label="VRAM" alloc={n.vram_alloc_gb} total={n.vram_total_gb} pct={n.vram_pct} fmt={fmtGb} />
+        )}
+      </div>
+      <div className="ncard-jobs">
+        {n.jobs.slice(0, 6).map((j, i) => (
+          <div key={i} className={'ncj-row ' + (j.mine?'mine':'') + (j.shell?' is-shell':'')}>
+            <span className="user">{j.user}</span>
+            <span className="name" title={j.name}>{j.name}</span>
+            <span className="res">{j.cpus}c</span>
+            <span className="lim">{j.limit}</span>
+          </div>
+        ))}
+        {n.jobs.length > 6 && (
+          <div className="ncj-row" style={{color:'var(--text-3)', fontStyle:'italic'}}>
+            <span></span>
+            <span>… {n.jobs.length - 6} more …</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NodePanel({ title, sub, mineHere, nodes, collapsible, defaultOpen }) {
+  const [open, setOpen] = useState(defaultOpen !== false);
+  // Drained/down nodes sink to the bottom; mine floats to the top.
+  const sorted = [...nodes].sort((a,b) =>
+    (b.mine - a.mine)
+    || (nodeStatus(a.state).drained - nodeStatus(b.state).drained)
+    || (b.gpu_pct - a.gpu_pct));
+  const showGrid = !collapsible || open;
+  return (
+    <div className="node-panel">
+      <div className={'np-h' + (collapsible ? ' clickable' : '')}
+           onClick={collapsible ? () => setOpen(o => !o) : undefined}>
+        <div>
+          {collapsible && <span className="np-chev">{open ? '▾' : '▸'}</span>}
+          <span className="title">{title}</span>
+          <span className="sub" style={{marginLeft:8}}>{sub}</span>
+        </div>
+        {mineHere && <span className="mine-tag">★ {mineHere}</span>}
+      </div>
+      {showGrid && (
+        <div className="np-grid">
+          {sorted.map(n => <NodeCard key={n.id} n={n} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FullQueue({ rows, totalRunning, totalPending }) {
+  const [open, setOpen] = useState(false);
+  const myRows = rows.filter(r => r.mine);
+  const myMineRunning = myRows.filter(r => r.running).length;
+  const myMinePending = myRows.filter(r => !r.running).length;
+
+  // Build display: all my running (compact), top 3 pending, my pending with gap rows around.
+  const myRunningRows = rows.filter(r => r.mine && r.running);
+  const pendingRows = rows.filter(r => !r.running);
+  const top3Pending = pendingRows.slice(0, 3);
+  const myPendingRows = pendingRows.filter(r => r.mine);
+
+  const visiblePosSet = new Set([
+    ...top3Pending.map(r => r.pos),
+    ...myPendingRows.map(r => r.pos),
+  ]);
+
+  const grouped = [];
+  // Section 1: my running rows (no gap)
+  for (const r of myRunningRows) grouped.push(r);
+  if (myRunningRows.length > 0) grouped.push({ divider: true });
+
+  // Section 2: pending sorted by pos with gap rows between visible chunks
+  let lastPos = 0;
+  for (const r of pendingRows) {
+    if (visiblePosSet.has(r.pos)) {
+      if (r.pos - lastPos > 1 && lastPos > 0) grouped.push({ gap: r.pos - lastPos - 1 });
+      else if (lastPos === 0 && r.pos > 1) grouped.push({ gap: r.pos - 1 });
+      grouped.push(r);
+      lastPos = r.pos;
+    }
+  }
+  const tail = totalPending - lastPos;
+  if (tail > 0) grouped.push({ gap: tail });
+
+  return (
+    <div className={'disc ' + (open ? 'open' : '')}>
+      <div className="disc-h" onClick={() => setOpen(o => !o)}>
+        <div className="left">
+          <span className="chev">▸</span>
+          <span className="title">DGXH 完整 queue</span>
+          <span className="sub">{totalRunning} running · {totalPending} waiting</span>
+        </div>
+        <div className="right dim">{myMineRunning} run / {myMinePending} pending of mine</div>
+      </div>
+      <div className="disc-body">
+        <table className="qtable2">
+          <thead>
+            <tr>
+              <th style={{width:60}}>POS</th>
+              <th style={{width:90}}>JobID</th>
+              <th style={{width:90}}>User</th>
+              <th>Name</th>
+              <th style={{width:60}}>GPU</th>
+              <th style={{width:60}}>CPU</th>
+              <th style={{width:140}}>Est. Start</th>
+            </tr>
+          </thead>
+          <tbody>
+            {grouped.map((r, i) => {
+              if (r.divider) return <tr key={'div'+i} className="gap-row"><td colSpan={7}>── pending queue ──</td></tr>;
+              if (r.gap) return <tr key={'gap'+i} className="gap-row"><td colSpan={7}>… {r.gap.toLocaleString()} more …</td></tr>;
+              return (
+                <tr key={(r.pos||'r')+r.id}
+                    className={(r.mine ? 'mine' : '') + (r.running ? ' clickable-row' : '')}
+                    title={r.running ? '點擊看 live log' : undefined}
+                    onClick={r.running ? () => openJobLog(r.id, r.name) : undefined}>
+                  <td>{r.running ? '●' : `#${r.pos}`}</td>
+                  <td>{r.id}</td>
+                  <td>{r.user}</td>
+                  <td>{r.name}</td>
+                  <td>{r.gpus}</td>
+                  <td>{r.cpus}c</td>
+                  <td className={r.running ? 'state-running' : ''}>{r.est}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────── Live job-log (SSE stream) ───────────────────
+// Module-level hook so any job row can open the log modal without threading a
+// callback through every component. The modal registers itself on mount.
+let _openJobLog = null;
+function openJobLog(id, name) { if (_openJobLog) _openJobLog(String(id), name || ''); }
+
+function JobLogModal() {
+  const [job, setJob] = useState(null);    // {id, name}
+  const [meta, setMeta] = useState(null);   // {state, name, stdout_path, stderr_path}
+  const [lines, setLines] = useState([]);
+  const [status, setStatus] = useState('');
+  const esRef = useRef(null);
+  const boxRef = useRef(null);
+  const atBottom = useRef(true);
+
+  useEffect(() => {
+    _openJobLog = (id, name) => setJob({ id, name });
+    return () => { _openJobLog = null; };
+  }, []);
+
+  const close = React.useCallback(() => {
+    if (esRef.current) { esRef.current.close(); esRef.current = null; }
+    setJob(null); setLines([]); setMeta(null); setStatus('');
+  }, []);
+
+  // Open one EventSource per job; closed on unmount / job change / modal close.
+  useEffect(() => {
+    if (!job) return;
+    setLines([]); setMeta(null); setStatus('connecting…'); atBottom.current = true;
+    const es = new EventSource('/api/joblog/stream?job=' + encodeURIComponent(job.id));
+    esRef.current = es;
+    es.addEventListener('meta', e => {
+      try { setMeta(JSON.parse(e.data)); setStatus('live'); } catch {}
+    });
+    es.addEventListener('line', e => {
+      try {
+        const d = JSON.parse(e.data);
+        setLines(prev => {
+          const next = prev.length > 4000 ? prev.slice(prev.length - 3500) : prev.slice();
+          next.push(d.t);
+          return next;
+        });
+      } catch {}
+    });
+    es.addEventListener('end', e => {
+      let reason = ''; try { reason = JSON.parse(e.data).reason || ''; } catch {}
+      setStatus('ended' + (reason ? ' · ' + reason : ''));
+      es.close(); esRef.current = null;   // server closed cleanly → don't reconnect
+    });
+    es.onerror = () => {
+      // Drop without clean end. Close instead of letting EventSource hammer
+      // reconnects against the submit node.
+      setStatus('disconnected'); es.close(); esRef.current = null;
+    };
+    return () => { es.close(); esRef.current = null; };
+  }, [job]);
+
+  useEffect(() => {
+    const el = boxRef.current;
+    if (el && atBottom.current) el.scrollTop = el.scrollHeight;
+  }, [lines]);
+
+  useEffect(() => {
+    if (!job) return;
+    const onKey = e => { if (e.key === 'Escape') close(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [job, close]);
+
+  if (!job) return null;
+
+  const onScroll = () => {
+    const el = boxRef.current; if (!el) return;
+    atBottom.current = (el.scrollHeight - el.scrollTop - el.clientHeight) < 40;
+  };
+  const isRun = meta && meta.state === 'RUNNING';
+
+  return (
+    <div className="jl-overlay" onClick={close}>
+      <div className="jl-modal" onClick={e => e.stopPropagation()}>
+        <div className="jl-head">
+          <span className="jl-title" title={meta && meta.name}>
+            {(meta && meta.name) || job.name || 'job'} <span className="jl-id">#{job.id}</span>
+          </span>
+          {meta && <span className={'jl-state' + (isRun ? ' run' : '')}>{meta.state}</span>}
+          <span style={{flex:1}} />
+          <span className="jl-status">{status}</span>
+          <button className="jl-close" onClick={close} title="關閉 (Esc)">✕</button>
+        </div>
+        <pre className="jl-body" ref={boxRef} onScroll={onScroll}>
+          {lines.length ? lines.join('\n')
+            : (status === 'connecting…' ? 'connecting…' : '(no output yet)')}
+        </pre>
+        <div className="jl-foot">
+          <span>live tail · {lines.length} lines</span>
+          <span style={{flex:1}} />
+          <span title={meta && (meta.stderr_path || meta.stdout_path)}>
+            {meta && (meta.stderr_path || meta.stdout_path)
+              ? (meta.stderr_path || meta.stdout_path).split('/').pop() : ''}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────── App ───────────────────────────
+
+const LS_KEY = 'hpc_v2_settings';
+const IDLE_THRESHOLD_MS = 90 * 1000;   // 90s no input → idle
+const IDLE_CADENCE_MS   = 90 * 1000;   // idle polling interval
+function loadSettings() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+    return { theme: 'dark', refreshSec: 15, hideShells: false, ...v };
+  } catch { return { theme: 'dark', refreshSec: 15, hideShells: false }; }
+}
+function saveSettings(s) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch {}
+}
+
+function App() {
+  const [settings, setSettings] = useState(loadSettings);
+  const [data, setData] = useState(null);
+  const [health, setHealth] = useState(null);
+  const [error, setError] = useState(null);
+  const [paused, setPaused] = useState(false);
+  const [mode, setMode] = useState(() => (typeof document !== 'undefined' && document.hidden) ? 'hidden' : 'active');
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [cfg, setCfg] = useState({ user: '', group: '' });
+  const inflight = useRef(false);
+  const lastActivity = useRef(Date.now());
+
+  // Fetch user/group config from server on mount
+  useEffect(() => {
+    fetch('/api/config').then(r => r.ok ? r.json() : {}).then(c => {
+      setCfg({ user: c.user || '', group: c.group || '' });
+      document.title = 'OSU HPC' + (c.user ? ' · ' + c.user : '');
+    }).catch(() => {});
+  }, []);
+
+  // Live elapsed-clock anchor (Option ②): runtimes tick locally so we no longer
+  // need a full dump just to move the clock. Anchor = client time at the moment
+  // a NEW dump landed; we detect "new" by data.timestamp so probe-only refreshes
+  // (which re-deliver the same JSON) don't reset the anchor and cause a sawtooth.
+  const liveNow = useNow(1000);
+  const [dumpBase, setDumpBase] = useState(() => Date.now());
+  const lastDumpTs = useRef(null);
+  useEffect(() => {
+    const ts = data && data.timestamp;
+    if (ts && ts !== lastDumpTs.current) {
+      lastDumpTs.current = ts;
+      setDumpBase(Date.now());
+    }
+  }, [data && data.timestamp]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', settings.theme);
+    saveSettings(settings);
+  }, [settings]);
+
+  const refresh = React.useCallback(async () => {
+    if (inflight.current) return;
+    inflight.current = true;
+    try {
+      const r = await fetch('/api/refresh?t=' + Date.now());
+      if (!r.ok) throw new Error('Fetch failed (HTTP ' + r.status + ')');
+      const raw = await r.json();
+      setData(mapAll(raw, cfg.user, cfg.group));
+      setLastUpdated(Date.now());
+      setError(null);
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      inflight.current = false;
+    }
+    try {
+      const h = await fetch('/api/health?t=' + Date.now());
+      if (h.ok) setHealth(await h.json());
+    } catch { /* watchdog optional */ }
+  }, [cfg]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Cadence driven by mode (active/idle) + manual pause + tab visibility
+  useEffect(() => {
+    if (paused || mode === 'hidden') return;
+    const cadenceMs = mode === 'active' ? settings.refreshSec * 1000 : IDLE_CADENCE_MS;
+    const t = setInterval(refresh, cadenceMs);
+    return () => clearInterval(t);
+  }, [paused, mode, settings.refreshSec, refresh]);
+
+  // Visibility transitions: tab hidden → pause; back → immediate refresh
+  useEffect(() => {
+    const onVis = () => {
+      if (document.hidden) {
+        setMode('hidden');
+      } else {
+        lastActivity.current = Date.now();
+        setMode('active');
+        refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [refresh]);
+
+  // User activity bumps lastActivity; wake from idle fires an immediate refresh
+  useEffect(() => {
+    const onActivity = () => {
+      lastActivity.current = Date.now();
+      if (mode === 'idle') {
+        setMode('active');
+        refresh();
+      }
+    };
+    const evts = ['mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
+    evts.forEach(e => window.addEventListener(e, onActivity, { passive: true }));
+    return () => evts.forEach(e => window.removeEventListener(e, onActivity));
+  }, [mode, refresh]);
+
+  // Idle detector: while active, drop to idle after 90s of no input
+  useEffect(() => {
+    if (mode !== 'active') return;
+    const tick = setInterval(() => {
+      if (Date.now() - lastActivity.current > IDLE_THRESHOLD_MS) {
+        setMode('idle');
+      }
+    }, 5000);
+    return () => clearInterval(tick);
+  }, [mode]);
+
+  if (!data) {
+    return (
+      <div className="shell">
+        <Header user={cfg.user || '...'} group={cfg.group || '...'} refreshSec={settings.refreshSec}
+          paused={paused} mode={mode} health={health}
+          onTogglePause={() => setPaused(p => !p)}
+          onIntervalChange={v => setSettings(s => ({...s, refreshSec: v}))}
+          onRefresh={refresh} lastUpdated={lastUpdated} error={error} />
+        <div style={{padding:'48px 0', color:'var(--text-3)', textAlign:'center', fontFamily:'var(--font-mono)', fontSize:13}}>
+          {error ? `⚠ ${error}` : 'Loading…'}
+        </div>
+      </div>
+    );
+  }
+
+  const running = data.my_jobs.filter(j => j.state === 'RUNNING');
+  const pending = data.my_jobs.filter(j => j.state === 'PENDING');
+  const shells  = data.my_jobs.filter(j => j.state === 'SHELL');
+  const totalGpus = running.reduce((s, j) => {
+    const m = (j.gpus||'').match(/×(\d+)/);
+    return s + (m ? parseInt(m[1]) : 0);
+  }, 0);
+
+  // Decide which node panels to show based on where my jobs live
+  const myParts = new Set();
+  for (const j of [...running, ...pending]) {
+    for (const p of candidates(j.partition)) myParts.add(p);
+  }
+  const showDgxh = data.dgxh_nodes.length > 0;
+  const showDgx2 = data.dgx2_nodes.length > 0;
+  const mineCount = nodes => nodes.reduce((s,n) => s + n.jobs.filter(j => j.mine).length, 0);
+  const dgx2Mine = mineCount(data.dgx2_nodes);
+  const dgxhMine = mineCount(data.dgxh_nodes);
+  const gpuMine = mineCount(data.gpu_nodes);
+  const ampereMine = mineCount(data.ampere_nodes);
+  const shareMine = mineCount(data.share_nodes);
+
+  return (
+    <div className="shell">
+      <JobLogModal />
+      <Header user={data.account.user} group={data.account.group} refreshSec={settings.refreshSec}
+        paused={paused} mode={mode} health={health}
+        onTogglePause={() => setPaused(p => !p)}
+        onIntervalChange={v => setSettings(s => ({...s, refreshSec: v}))}
+        onRefresh={refresh} lastUpdated={lastUpdated} error={error} />
+
+      <Account a={data.account} />
+
+      <div className="dash-row">
+        <div className="my-jobs-frame">
+          <div className="frame-h">
+            <span className="ttl">My Jobs</span>
+            <span className="summary">
+              {running.length > 0 && <><span className="r">{running.length} running</span></>}
+              {running.length > 0 && pending.length > 0 && <span className="sep">·</span>}
+              {pending.length > 0 && <><span className="p">{pending.length} pending</span></>}
+              {totalGpus > 0 && <><span className="sep">·</span>{totalGpus} GPU</>}
+            </span>
+          </div>
+
+          {running.length === 0 && pending.length === 0 ? (
+            <div className="empty">No active jobs</div>
+          ) : (
+            <>
+              {running.length > 0 && (
+                <>
+                  <div className="frame-sec">
+                    <span>Running <span className="count">{running.length}</span></span>
+                  </div>
+                  <div className="run-grid">
+                    {running.map(j => <RunCard key={j.id} j={j} now={liveNow} base={dumpBase} />)}
+                  </div>
+                </>
+              )}
+              {pending.length > 0 && (
+                <>
+                  <div className="frame-sec">
+                    <span>Pending <span className="count">{pending.length}</span></span>
+                    <span className="hint">multi-partition jobs run wherever frees first</span>
+                  </div>
+                  <div className="pend-list">
+                    {pending.map(j => <PendRow key={j.id} j={j} />)}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        <DeviceMap partitions={data.partitions} others={data.others} vertical />
+      </div>
+
+      {!settings.hideShells && shells.length > 0 && <ShellRow shells={shells} />}
+
+      {showDgx2 && dgx2Mine > 0 && (
+        <>
+          <div className="sec2">
+            <h2>DGX2 nodes <span className="count">★ {dgx2Mine} jobs</span></h2>
+            <span className="hint">most of your compute lives here</span>
+          </div>
+          <NodePanel title="DGX2" sub={`${data.dgx2_nodes.length} nodes · V100`} mineHere={`${dgx2Mine} of yours`} nodes={data.dgx2_nodes} />
+        </>
+      )}
+
+      {showDgxh && (
+        <>
+          <div className="sec2">
+            <h2>DGXH nodes <span className="count">{dgxhMine > 0 ? `★ ${dgxhMine} jobs` : `${data.dgxh_nodes.length} nodes`}</span></h2>
+            <span className="hint">queue depth {data.dgxh_total_pending.toLocaleString()}</span>
+          </div>
+          <NodePanel title="DGXH" sub={`${data.dgxh_nodes.length} nodes · H100/H200`} mineHere={dgxhMine > 0 ? `${dgxhMine} of yours` : null} nodes={data.dgxh_nodes} />
+        </>
+      )}
+
+      {showDgx2 && dgx2Mine === 0 && (
+        <>
+          <div className="sec2">
+            <h2>DGX2 nodes <span className="count">{data.dgx2_nodes.length} nodes</span></h2>
+          </div>
+          <NodePanel title="DGX2" sub={`${data.dgx2_nodes.length} nodes · V100`} mineHere={null} nodes={data.dgx2_nodes} />
+        </>
+      )}
+
+      {data.gpu_nodes.length > 0 && (
+        <>
+          <div className="sec2">
+            <h2>GPU nodes <span className="count">{gpuMine > 0 ? `★ ${gpuMine} jobs` : `${data.gpu_nodes.length} nodes`}</span></h2>
+            <span className="hint">RTX 8000</span>
+          </div>
+          <NodePanel title="GPU" sub={`${data.gpu_nodes.length} nodes · RTX 8000`} mineHere={gpuMine > 0 ? `${gpuMine} of yours` : null} nodes={data.gpu_nodes} />
+        </>
+      )}
+
+      {data.ampere_nodes.length > 0 && (
+        <>
+          <div className="sec2">
+            <h2>AMPERE nodes <span className="count">{ampereMine > 0 ? `★ ${ampereMine} jobs` : `${data.ampere_nodes.length} nodes`}</span></h2>
+            <span className="hint">A40 / A100</span>
+          </div>
+          <NodePanel title="AMPERE" sub={`${data.ampere_nodes.length} nodes · A40/A100`} mineHere={ampereMine > 0 ? `${ampereMine} of yours` : null} nodes={data.ampere_nodes} />
+        </>
+      )}
+
+      {data.share_nodes.length > 0 && (
+        <>
+          <div className="sec2">
+            <h2>SHARE nodes <span className="count">{shareMine > 0 ? `★ ${shareMine} jobs` : `${data.share_nodes.length} GPU nodes`}</span></h2>
+            <span className="hint">僅列有 GPU 的節點 · 純 CPU 已隱藏</span>
+          </div>
+          <NodePanel title="SHARE" sub={`${data.share_nodes.length} GPU nodes · A40 / mixed`} mineHere={shareMine > 0 ? `${shareMine} of yours` : null} nodes={data.share_nodes} collapsible defaultOpen={shareMine > 0} />
+        </>
+      )}
+
+      <div style={{margin:'24px 0 8px'}}>
+        <span style={{fontSize:10.5, color:'var(--text-3)', fontFamily:'var(--font-mono)', textTransform:'uppercase', letterSpacing:'.08em', fontWeight:600}}>
+          ── 需要時才看 ──
+        </span>
+      </div>
+
+      <FullQueue rows={data.dgxh_queue_rows} totalRunning={data.dgxh_total_running} totalPending={data.dgxh_total_pending} />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

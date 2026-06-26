@@ -1,0 +1,17 @@
+# Generated at install time (contains secrets/user-specific paths)
+config.env
+ssh_config
+
+# Runtime data (JSON dumps, logs)
+data/*
+!data/.gitkeep
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
