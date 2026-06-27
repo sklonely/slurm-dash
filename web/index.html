@@ -390,6 +390,42 @@ body {
 .qtable2 td.state-running { color: var(--running); }
 .qtable2 .gap-row td { text-align: center; color: var(--text-3); font-style: italic; background: var(--bg-inset); padding: 5px; font-size: 10.5px; }
 
+/* — Partition filter popover — */
+.partfilter { position: relative; display: inline-flex; }
+.partfilter .pf-btn {
+  background: transparent; border: 1px solid var(--border); padding: 4px 10px;
+  border-radius: 999px; font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-2); cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+}
+.partfilter .pf-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.partfilter .pf-drop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 50;
+  background: var(--bg-card); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  padding: 8px 0; min-width: 170px; font-family: var(--font-mono); font-size: 11px;
+}
+.partfilter .pf-drop .pf-row {
+  display: flex; align-items: center; gap: 8px; padding: 5px 14px; cursor: pointer;
+  color: var(--text-2); transition: background .1s;
+}
+.partfilter .pf-drop .pf-row:hover { background: var(--bg-card-2); }
+.partfilter .pf-drop .pf-row input[type="checkbox"] {
+  accent-color: var(--accent); margin: 0; cursor: pointer;
+}
+.partfilter .pf-drop .pf-row .pf-label { flex: 1; }
+.partfilter .pf-drop .pf-row .pf-sub { color: var(--text-3); font-size: 9.5px; }
+.partfilter .pf-drop .pf-divider {
+  height: 1px; background: var(--border); margin: 4px 0;
+}
+.partfilter .pf-drop .pf-actions {
+  display: flex; gap: 8px; padding: 4px 14px; justify-content: flex-end;
+}
+.partfilter .pf-drop .pf-actions button {
+  background: transparent; border: 0; font: inherit; font-family: var(--font-mono);
+  font-size: 10px; color: var(--link); cursor: pointer; padding: 2px 4px;
+}
+.partfilter .pf-drop .pf-actions button:hover { text-decoration: underline; }
+
 @media (max-width: 980px) {
   .dash-row { grid-template-columns: 1fr; }
   .devmap { grid-template-columns: repeat(2, 1fr); }
@@ -583,6 +619,8 @@ const OTHER_DEFS = [
   { id: 'eecs', label: 'EECS', gpu: 'RTX 2080' },
   { id: 'dgxs', label: 'DGXS', gpu: '(idle)' },
 ];
+const ALL_PART_DEFS = [...PARTITION_DEFS, ...OTHER_DEFS];
+const ALL_PART_IDS = ALL_PART_DEFS.map(d => d.id);
 
 function buildPartitions(partCounts, queue) {
   const pcByName = Object.fromEntries((partCounts||[]).map(p => [p.name, p]));
@@ -841,7 +879,7 @@ function useNow(intervalMs = 1000) {
   return now;
 }
 
-function Header({ user, group, refreshSec, paused, mode, health, onTogglePause, onIntervalChange, onRefresh, lastUpdated, error }) {
+function Header({ user, group, refreshSec, paused, mode, health, onTogglePause, onIntervalChange, onRefresh, lastUpdated, error, visibleParts, onTogglePart }) {
   const now = useNow(1000);
   const time = new Date(now);
   const hh = String(time.getHours()).padStart(2,'0');
@@ -870,6 +908,9 @@ function Header({ user, group, refreshSec, paused, mode, health, onTogglePause, 
       </div>
       <div className="meta">
         <span className="tnum">{hh}:{mm}:{ss}</span>
+        {visibleParts && onTogglePart && (
+          <PartitionFilter visible={visibleParts} onToggle={onTogglePart} />
+        )}
         <span className="refctl">
           <span className="dot" style={{background: paused?'var(--text-3)':'var(--running)', animation: paused?'none':undefined}}/>
           <button onClick={onRefresh} title="Refresh now">↻</button>
@@ -952,12 +993,14 @@ function DeviceMap({ partitions, others, vertical }) {
           </div>
         );
       })}
-      <div className="dm-other" onClick={() => setShowOther(s => !s)}>
-        <div className="lbl">Other</div>
-        {showOther ? others.map(o => (
-          <div key={o.id}>{o.label} <span style={{color:'var(--text-3)'}}>{o.running}R/{o.pending}P</span></div>
-        )) : <div>{others.length} partitions</div>}
-      </div>
+      {others.length > 0 && (
+        <div className="dm-other" onClick={() => setShowOther(s => !s)}>
+          <div className="lbl">Other</div>
+          {showOther ? others.map(o => (
+            <div key={o.id}>{o.label} <span style={{color:'var(--text-3)'}}>{o.running}R/{o.pending}P</span></div>
+          )) : <div>{others.length} partitions</div>}
+        </div>
+      )}
     </div>
   );
 }
@@ -1366,6 +1409,68 @@ function JobLogModal() {
   );
 }
 
+// ─────────────── Partition visibility filter ────────────────
+
+const LS_VISIBLE_KEY = 'slurmdash.visibleParts';
+
+function loadVisibleParts() {
+  try {
+    const raw = localStorage.getItem(LS_VISIBLE_KEY);
+    if (!raw) return new Set(ALL_PART_IDS);
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return new Set(ALL_PART_IDS);
+    // Only keep ids that actually exist in ALL_PART_IDS
+    const valid = arr.filter(id => ALL_PART_IDS.includes(id));
+    return new Set(valid);
+  } catch {
+    return new Set(ALL_PART_IDS);
+  }
+}
+
+function PartitionFilter({ visible, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const onClick = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+  const allOn = ALL_PART_IDS.every(id => visible.has(id));
+  const noneOn = ALL_PART_IDS.every(id => !visible.has(id));
+  const count = ALL_PART_IDS.filter(id => visible.has(id)).length;
+  return (
+    <span className="partfilter" ref={ref}>
+      <button className="pf-btn" onClick={() => setOpen(o => !o)}>
+        Partitions {count < ALL_PART_IDS.length ? `${count}/${ALL_PART_IDS.length}` : 'all'}
+        <span style={{fontSize:9, color:'var(--text-3)'}}>{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div className="pf-drop">
+          {ALL_PART_DEFS.map(d => (
+            <label key={d.id} className="pf-row" onClick={e => e.stopPropagation()}>
+              <input type="checkbox" checked={visible.has(d.id)}
+                onChange={() => onToggle(d.id)} />
+              <span className="pf-label">{d.label}</span>
+              <span className="pf-sub">{d.gpu}</span>
+            </label>
+          ))}
+          <div className="pf-divider" />
+          <div className="pf-actions">
+            <button onClick={() => { ALL_PART_IDS.forEach(id => { if (!visible.has(id)) onToggle(id); }); }}>
+              All
+            </button>
+            <button onClick={() => { ALL_PART_IDS.forEach(id => { if (visible.has(id)) onToggle(id); }); }}>
+              None
+            </button>
+          </div>
+        </div>
+      )}
+    </span>
+  );
+}
+
 // ─────────────────────────── App ───────────────────────────
 
 const LS_KEY = 'hpc_v2_settings';
@@ -1390,8 +1495,22 @@ function App() {
   const [mode, setMode] = useState(() => (typeof document !== 'undefined' && document.hidden) ? 'hidden' : 'active');
   const [lastUpdated, setLastUpdated] = useState(null);
   const [cfg, setCfg] = useState({ user: '', group: '' });
+  const [visibleParts, setVisibleParts] = useState(loadVisibleParts);
   const inflight = useRef(false);
   const lastActivity = useRef(Date.now());
+
+  // Persist partition visibility to localStorage
+  useEffect(() => {
+    try { localStorage.setItem(LS_VISIBLE_KEY, JSON.stringify([...visibleParts])); } catch {}
+  }, [visibleParts]);
+
+  const togglePart = React.useCallback(id => {
+    setVisibleParts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
 
   // Fetch user/group config from server on mount
   useEffect(() => {
@@ -1536,7 +1655,8 @@ function App() {
         paused={paused} mode={mode} health={health}
         onTogglePause={() => setPaused(p => !p)}
         onIntervalChange={v => setSettings(s => ({...s, refreshSec: v}))}
-        onRefresh={refresh} lastUpdated={lastUpdated} error={error} />
+        onRefresh={refresh} lastUpdated={lastUpdated} error={error}
+        visibleParts={visibleParts} onTogglePart={togglePart} />
 
       <Account a={data.account} />
 
@@ -1581,12 +1701,12 @@ function App() {
           )}
         </div>
 
-        <DeviceMap partitions={data.partitions} others={data.others} vertical />
+        <DeviceMap partitions={data.partitions.filter(p => visibleParts.has(p.id))} others={data.others.filter(p => visibleParts.has(p.id))} vertical />
       </div>
 
       {!settings.hideShells && shells.length > 0 && <ShellRow shells={shells} />}
 
-      {showDgx2 && dgx2Mine > 0 && (
+      {visibleParts.has('dgx2') && showDgx2 && dgx2Mine > 0 && (
         <>
           <div className="sec2">
             <h2>DGX2 nodes <span className="count">★ {dgx2Mine} jobs</span></h2>
@@ -1596,7 +1716,7 @@ function App() {
         </>
       )}
 
-      {showDgxh && (
+      {visibleParts.has('dgxh') && showDgxh && (
         <>
           <div className="sec2">
             <h2>DGXH nodes <span className="count">{dgxhMine > 0 ? `★ ${dgxhMine} jobs` : `${data.dgxh_nodes.length} nodes`}</span></h2>
@@ -1606,7 +1726,7 @@ function App() {
         </>
       )}
 
-      {showDgx2 && dgx2Mine === 0 && (
+      {visibleParts.has('dgx2') && showDgx2 && dgx2Mine === 0 && (
         <>
           <div className="sec2">
             <h2>DGX2 nodes <span className="count">{data.dgx2_nodes.length} nodes</span></h2>
@@ -1615,7 +1735,7 @@ function App() {
         </>
       )}
 
-      {data.gpu_nodes.length > 0 && (
+      {visibleParts.has('gpu') && data.gpu_nodes.length > 0 && (
         <>
           <div className="sec2">
             <h2>GPU nodes <span className="count">{gpuMine > 0 ? `★ ${gpuMine} jobs` : `${data.gpu_nodes.length} nodes`}</span></h2>
@@ -1625,7 +1745,7 @@ function App() {
         </>
       )}
 
-      {data.ampere_nodes.length > 0 && (
+      {visibleParts.has('ampere') && data.ampere_nodes.length > 0 && (
         <>
           <div className="sec2">
             <h2>AMPERE nodes <span className="count">{ampereMine > 0 ? `★ ${ampereMine} jobs` : `${data.ampere_nodes.length} nodes`}</span></h2>
@@ -1635,7 +1755,7 @@ function App() {
         </>
       )}
 
-      {data.share_nodes.length > 0 && (
+      {visibleParts.has('share') && data.share_nodes.length > 0 && (
         <>
           <div className="sec2">
             <h2>SHARE nodes <span className="count">{shareMine > 0 ? `★ ${shareMine} jobs` : `${data.share_nodes.length} GPU nodes`}</span></h2>
@@ -1645,13 +1765,16 @@ function App() {
         </>
       )}
 
-      <div style={{margin:'24px 0 8px'}}>
-        <span style={{fontSize:10.5, color:'var(--text-3)', fontFamily:'var(--font-mono)', textTransform:'uppercase', letterSpacing:'.08em', fontWeight:600}}>
-          ── 需要時才看 ──
-        </span>
-      </div>
-
-      <FullQueue rows={data.dgxh_queue_rows} totalRunning={data.dgxh_total_running} totalPending={data.dgxh_total_pending} />
+      {visibleParts.has('dgxh') && (
+        <>
+          <div style={{margin:'24px 0 8px'}}>
+            <span style={{fontSize:10.5, color:'var(--text-3)', fontFamily:'var(--font-mono)', textTransform:'uppercase', letterSpacing:'.08em', fontWeight:600}}>
+              ── 需要時才看 ──
+            </span>
+          </div>
+          <FullQueue rows={data.dgxh_queue_rows} totalRunning={data.dgxh_total_running} totalPending={data.dgxh_total_pending} />
+        </>
+      )}
     </div>
   );
 }
