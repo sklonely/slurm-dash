@@ -19,8 +19,8 @@
 #   ControlMaster pins us to whichever node the first connection lands on for the
 #   master's lifetime (stable, reuses one connection); if that connection dies,
 #   the next reconnect re-rolls the round-robin (automatic failover). We do NOT
-#   hard-pin a node -- load shifts (submit-b was measured ~1.5x oversubscribed,
-#   submit-c the lightest), and round-robin DNS is not load-aware anyway.
+#   hard-pin a node -- load shifts across submit nodes, and round-robin DNS is
+#   not load-aware anyway.
 #
 # INSTALL NOTE
 #   install.sh generates `ssh_config` from this template by replacing
@@ -41,7 +41,7 @@ Host dash-gateway
     TCPKeepAlive yes
     # NOTE: Compression is intentionally OFF. It would shift CPU onto the submit
     # node (the sender compresses) -- and the submit node's scarce resource is
-    # CPU/load (measured 37-98), not bandwidth. The right way to be gentle is to
+    # CPU/load, not bandwidth. The right way to be gentle is to
     # send LESS (query less often), not to compress what we do send.
 
 Host dash-submit
@@ -60,5 +60,5 @@ Host dash-submit
     TCPKeepAlive yes
     # NOTE: Compression is intentionally OFF. It would shift CPU onto the submit
     # node (the sender compresses) -- and the submit node's scarce resource is
-    # CPU/load (measured 37-98), not bandwidth. The right way to be gentle is to
+    # CPU/load, not bandwidth. The right way to be gentle is to
     # send LESS (query less often), not to compress what we do send.
