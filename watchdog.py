@@ -35,23 +35,8 @@ if not SLURM_USER:
     sys.stderr.write("[watchdog] FATAL: SLURM_USER environment variable is not set.\n")
     sys.exit(1)
 
-SSH_HOST = os.environ.get(
-    "WATCHDOG_HOST",
-    f"{SLURM_USER}@submit.hpc.engr.oregonstate.edu",
-)
-SSH_JUMP = os.environ.get("WATCHDOG_JUMP", "osu-engr")
-SSH_CONTROL_DIR = Path.home() / ".ssh" / "cm"
-SSH_CONTROL_DIR.mkdir(parents=True, exist_ok=True)
-os.chmod(SSH_CONTROL_DIR, 0o700)
-
-SSH_OPTS = [
-    "-o", f"ConnectTimeout={SSH_CONNECT_TIMEOUT}",
-    "-o", "BatchMode=yes",
-    "-o", "ControlMaster=auto",
-    "-o", f"ControlPath={SSH_CONTROL_DIR}/%C",
-    "-o", "ControlPersist=600",
-    "-J", SSH_JUMP,
-]
+DASH_SSH_CONFIG = APP_ROOT / "ssh_config"
+SSH_HOST = "dash-submit"  # resolved via the project's ssh_config
 
 
 def now_utc() -> str:
@@ -85,7 +70,7 @@ def probe() -> tuple[bool, int, str, int, str]:
     start = time.monotonic()
     try:
         r = subprocess.run(
-            ["ssh", *SSH_OPTS, SSH_HOST,
+            ["ssh", "-F", str(DASH_SSH_CONFIG), SSH_HOST,
              f"hostname && squeue -u {SLURM_USER} -h 2>/dev/null | wc -l"],
             capture_output=True, text=True, timeout=SSH_CONNECT_TIMEOUT + 10,
         )

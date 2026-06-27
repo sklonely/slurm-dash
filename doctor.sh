@@ -79,6 +79,7 @@ classify() {  # prints OK | AUTH | NET | OTHER:::<stderr>
   case "$out" in
     *"Permission denied"*) echo "AUTH" ;;
     *"Could not resolve"*|*"Network is unreachable"*|*"timed out"*|*"Operation timed out"*|*"No route to host"*) echo "NET" ;;
+    *"Host key verification failed"*) echo "HOSTKEY" ;;
     *) echo "OTHER:::$out" ;;
   esac
 }
@@ -90,16 +91,35 @@ for attempt in 1 2 3; do
     OK)
       echo "   ✅ Connected through the gateway to the submit node. You're all set."
       exit 0 ;;
+    HOSTKEY)
+      echo "   ✗ First-contact host key issue; seeding known_hosts…"
+      ssh-keyscan -H access.engr.oregonstate.edu >> ~/.ssh/known_hosts 2>/dev/null
+      continue ;;
     AUTH)
       echo "   ✗ Your key isn't authorized on the cluster yet."
       if [ "$MODE" = manual ]; then
         echo "     Run (type your OSU password once):"
-        echo "       ssh-copy-id -i \"${SSH_ID}.pub\" \"${SLURM_USER}@${GATEWAY}\""
-        echo "     (OSU's gateway + submit share your home dir, so this one copy covers both hops.)"
+        if command -v ssh-copy-id >/dev/null 2>&1; then
+          echo "       ssh-copy-id -i \"${SSH_ID}.pub\" \"${SLURM_USER}@${GATEWAY}\""
+        else
+          echo "       cat \"${SSH_ID}.pub\" | ssh \"${SLURM_USER}@${GATEWAY}\" 'umask 077; mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'"
+        fi
+        echo "     (OSU's gateway + submit usually share your home dir, so this one copy normally covers both hops.)"
         exit 1
       elif ask "   Copy your public key to the cluster now? (you'll type your OSU password ONCE)"; then
-        if ssh-copy-id -i "${SSH_ID}.pub" "${SLURM_USER}@${GATEWAY}"; then
-          echo "   ✓ key copied (shared home covers gateway + submit). re-testing…"
+        copy_ok=false
+        if command -v ssh-copy-id >/dev/null 2>&1; then
+          if ssh-copy-id -i "${SSH_ID}.pub" "${SLURM_USER}@${GATEWAY}"; then
+            copy_ok=true
+          fi
+        else
+          echo "   (ssh-copy-id not found; using manual key append)"
+          if ssh "${SLURM_USER}@${GATEWAY}" 'umask 077; mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys' < "${SSH_ID}.pub"; then
+            copy_ok=true
+          fi
+        fi
+        if $copy_ok; then
+          echo "   ✓ key copied (shared home usually covers gateway + submit). re-testing…"
           continue
         else
           echo "   ✗ key copy failed — check your netID/password and network." >&2; exit 1
@@ -117,7 +137,7 @@ for attempt in 1 2 3; do
       echo "${cls#OTHER:::}" | sed 's/^/       /'
       echo "     If that mentions Duo / 2FA / keyboard-interactive, the gateway wants interactive"
       echo "     auth that BatchMode can't do. Warm it up once, then re-run this doctor:"
-      echo "       ssh -F \"$CFG\" dash-gateway        # complete 2FA; the connection stays warm ~30 min"
+      echo "       ssh -F \"$CFG\" -o BatchMode=no dash-gateway   # complete 2FA; the connection stays warm ~30 min"
       exit 1 ;;
   esac
 done

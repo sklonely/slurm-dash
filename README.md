@@ -76,7 +76,11 @@ username and password. When it finishes, you will have an **Ubuntu** terminal.
 Open your Ubuntu terminal and run:
 
 ```bash
-sudo apt update && sudo apt install -y git python3 openssh-client
+# Detect your package manager and install:
+if command -v apt >/dev/null; then sudo apt update && sudo apt install -y git python3 openssh-client;
+elif command -v dnf >/dev/null; then sudo dnf install -y git python3 openssh-clients;
+elif command -v pacman >/dev/null; then sudo pacman -S --needed git python openssh;
+elif command -v zypper >/dev/null; then sudo zypper install -y git python3 openssh; fi
 ```
 
 ### 3. Clone and configure
@@ -200,7 +204,7 @@ Both -- but you only ever install **one local key** and copy its public half **o
 |----------------|---------------|---------|
 | **Server**     | `server.py`   | HTTP server serving `web/` + API endpoints (`/api/refresh`, `/api/status`, `/api/health`, `/api/config`, `/api/joblog/stream`). |
 | **Collector**   | `collect.sh`  | SSH into the submit node, run ~20 SLURM queries, render JSON to `data/hpc_status.json`. Smart change-detection: only does the heavy dump when your queue actually changes. |
-| **Watchdog**   | `watchdog.py` | Probes the submit node every 5 min, writes `data/hpc_watchdog.json`, fires desktop notifications on state transitions (macOS: osascript, Linux: notify-send). |
+| **Watchdog**   | `watchdog.py` | Probes the submit node every 5 min, writes `data/hpc_watchdog.json`, fires desktop notifications on state transitions (macOS: osascript, Linux: notify-send). (Optional; not auto-started.) |
 | **Runner**     | `run.sh`      | Universal foreground launcher. Works on any OS. Use when you don't have (or don't want) a service manager. |
 | **Frontend**   | `web/index.html` | React SPA that fetches JSON from the API endpoints and renders the dashboard. |
 | **SSH config** | `ssh_config`  | Generated from `ssh_config.example` at install time. Dedicated ControlMaster for the dashboard (isolated from your interactive SSH). |

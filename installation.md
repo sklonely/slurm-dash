@@ -18,9 +18,12 @@ ssh -V ; git --version
 - **Native Windows is NOT supported** (no bash, no SSH ControlMaster). If you are on
   native Windows, tell the user to install WSL2 (`wsl --install` in PowerShell, pick
   Ubuntu), then run everything **inside the Ubuntu/WSL shell** and continue there.
-- On Debian/Ubuntu/WSL, install anything missing:
+- On Linux/WSL, install anything missing with your package manager:
   ```bash
-  sudo apt update && sudo apt install -y git python3 openssh-client
+  if command -v apt >/dev/null; then sudo apt update && sudo apt install -y git python3 openssh-client;
+  elif command -v dnf >/dev/null; then sudo dnf install -y git python3 openssh-clients;
+  elif command -v pacman >/dev/null; then sudo pacman -S --needed git python openssh;
+  elif command -v zypper >/dev/null; then sudo zypper install -y git python3 openssh; fi
   ```
 
 ## 1. Get the code
@@ -30,8 +33,9 @@ ssh -V ; git --version
   ```bash
   git clone https://github.com/sklonely/slurm-dash.git && cd slurm-dash
   ```
-  This is a **private** repo. If the clone fails with an auth error, ask the user to
-  grant your GitHub account access (or run `gh auth login`), then retry.
+  This repo is public; `git clone` works without auth. If the clone fails, it's a
+  network or missing-git issue (check `git --version` and connectivity), not a
+  permissions issue.
 
 ## 2. Configure  **[ASK USER: OSU netID]**
 
@@ -40,11 +44,16 @@ cp -n config.example.env config.env
 ```
 Ask the user for their **OSU netID**, then set it (the dashboard only needs this one value):
 ```bash
+NETID="the_netid_the_user_gave_you"   # <-- substitute the real value
+
 # Linux/WSL:
-sed -i  's/^SLURM_USER=.*/SLURM_USER=NETID/' config.env
+sed -i  "s/^SLURM_USER=.*/SLURM_USER=$NETID/" config.env
 # macOS:
-sed -i '' 's/^SLURM_USER=.*/SLURM_USER=NETID/' config.env
-grep '^SLURM_USER=' config.env        # verify it is set
+sed -i '' "s/^SLURM_USER=.*/SLURM_USER=$NETID/" config.env
+
+# Verify it is set to a real value (not a placeholder):
+grep '^SLURM_USER=' config.env
+grep -q '^SLURM_USER=<' config.env && echo "STILL A PLACEHOLDER — substitute the real netID"
 ```
 (Optional: `SLURM_GROUP`, `SSH_IDENTITY`, `DASHBOARD_PORT` — sensible defaults exist.
 Gateway/partitions/rates are baked in for the OSU cluster.)
@@ -54,6 +63,10 @@ Gateway/partitions/rates are baked in for the OSU cluster.)
 The dashboard reaches the cluster over two hops (your machine → `access.engr.oregonstate.edu`
 → a submit node) via ProxyJump. The doctor sets this up for the user — they do **not** need
 to know the jump-host details.
+
+**No-TTY note**: If you (the agent) do NOT control an interactive terminal the user
+can type into, STOP here and tell the user to run `./doctor.sh --auto` themselves in
+their own terminal (they'll be asked for their OSU password once), then resume at step 4.
 
 ```bash
 ./doctor.sh --auto
@@ -72,21 +85,29 @@ If it reports:
 ```bash
 ./install.sh
 ```
-Auto-detects the OS: macOS → LaunchAgent · Linux/WSL with systemd → systemd user service ·
-WSL without systemd → it tells you to start manually with `./run.sh`. Non-fatal if SSH is not
+Auto-detects the OS: macOS -> LaunchAgent, Linux/WSL with systemd -> systemd user service,
+WSL without systemd -> it tells you to start manually with `./run.sh`. Non-fatal if SSH is not
 ready yet (it installs anyway; the dashboard just shows no data until the connection works).
+
+If the output said to start it manually (WSL without systemd), do it now BEFORE verifying:
+```bash
+nohup ./run.sh > data/server.log 2>&1 &
+```
+Then wait ~3 seconds for the server to come up.
 
 ## 5. Verify it serves
 
+Startup is async; use a retry loop:
 ```bash
-# /api/config should echo the configured user:
-python3 -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8899/api/config',timeout=5).read().decode())"
+for i in $(seq 1 10); do
+  python3 -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8899/api/config',timeout=2)" 2>/dev/null && break || sleep 1
+done
+```
+Then assert the value is real (not a placeholder):
+```bash
+python3 -c "import json,urllib.request as u; d=json.load(u.urlopen('http://127.0.0.1:8899/api/config',timeout=5)); assert d.get('user') and not d['user'].startswith('<'), d; print(d)"
 # index page should be HTTP 200:
 python3 -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8899/',timeout=5).getcode())"
-```
-If `install.sh` told you to use `./run.sh` (WSL without systemd), start it first:
-```bash
-nohup ./run.sh > data/server.log 2>&1 &
 ```
 
 ## 6. Open the dashboard

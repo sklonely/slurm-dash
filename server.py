@@ -150,12 +150,14 @@ class ThrottledRefresher:
             with self._lock:
                 self._last_finished_ok = time.monotonic()
                 self._last_error = None
-            self._first_done.set()
         except Exception as exc:
             sys.stderr.write(f"[refresh] failed: {exc}\n")
             with self._lock:
                 self._last_error = str(exc)[:200]
         finally:
+            # Always unblock cold-start waiters (even on failure) so they
+            # get a fast error instead of blocking for the full timeout.
+            self._first_done.set()
             with self._lock:
                 self._inflight = False
 
@@ -273,11 +275,13 @@ class Handler(SimpleHTTPRequestHandler):
             if kick.get("reason"):
                 extra["X-Refresh-Reason"] = kick["reason"]
             if not STATUS_JSON.exists():
-                # Cold start: block until first dump lands (or timeout)
-                if REFRESH.wait_for_first(DUMP_TIMEOUT_S):
+                # Cold start: block briefly (not the full 180s dump timeout).
+                cold_wait = min(20, DUMP_TIMEOUT_S)
+                if REFRESH.wait_for_first(cold_wait) and STATUS_JSON.exists():
                     self._send_file_json(STATUS_JSON, extra)
                 else:
-                    self._send_json(504, {"error": "timed out waiting for first dump"})
+                    detail = REFRESH.status().get("last_error") or "dump not finished yet"
+                    self._send_json(503, {"error": "SSH not connected yet", "detail": detail})
                 return
             self._send_file_json(STATUS_JSON, extra)
             return
@@ -415,10 +419,22 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def main():
+    import errno as _errno
+
     # Ensure data directory exists
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     os.chdir(APP_ROOT)
-    with ThreadingHTTPServer((HOST, PORT), Handler) as srv:
+    try:
+        srv = ThreadingHTTPServer((HOST, PORT), Handler)
+    except OSError as exc:
+        if exc.errno == _errno.EADDRINUSE:
+            sys.stderr.write(
+                f"port {PORT} is already in use; set DASHBOARD_PORT to a "
+                f"free port (or stop the other process) and retry\n"
+            )
+            sys.exit(1)
+        raise
+    with srv:
         sys.stderr.write(
             f"[slurm-dash] listening on {HOST}:{PORT}, "
             f"web_root={WEB_ROOT}, data_dir={DATA_DIR}\n"

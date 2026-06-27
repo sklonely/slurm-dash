@@ -106,6 +106,14 @@ case "$OS" in
 
     mkdir -p "$HOME/Library/LaunchAgents"
 
+    # Resolve the python3 interpreter (macOS may use a Homebrew or pyenv python,
+    # not necessarily /usr/bin/python3).
+    PYBIN="$(command -v python3 || true)"
+    if [ ! -x "${PYBIN:-}" ]; then
+        echo "ERROR: python3 not found on PATH" >&2
+        exit 1
+    fi
+
     cat > "$PLIST_PATH" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -117,7 +125,7 @@ case "$OS" in
 
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/python3</string>
+    <string>${PYBIN}</string>
     <string>${APP_ROOT}/server.py</string>
   </array>
 
@@ -152,6 +160,20 @@ case "$OS" in
 PLIST
 
     launchctl load "$PLIST_PATH"
+
+    # Post-start health poll: give the server a few seconds to come up.
+    _started=false
+    for _i in 1 2 3 4 5; do
+      if python3 -c "import urllib.request as u; u.urlopen('http://127.0.0.1:${DASHBOARD_PORT}/api/config', timeout=2)" 2>/dev/null; then
+        _started=true; break
+      fi
+      sleep 1
+    done
+    if ! $_started; then
+      echo ""
+      echo "WARN: service did not come up — check data/server.log (port ${DASHBOARD_PORT} may be in use)"
+      tail -5 "$APP_ROOT/data/server.log" 2>/dev/null || true
+    fi
 
     echo ""
     echo "LaunchAgent installed: $PLIST_LABEL"
@@ -193,21 +215,39 @@ WantedBy=default.target
 UNIT
 
         systemctl --user daemon-reload
-        systemctl --user enable --now slurm-dash
+        if ! systemctl --user enable --now slurm-dash; then
+          echo "systemd present but could not start the service; falling back to manual start:"
+          echo "  ./run.sh   (or: nohup ./run.sh > data/server.log 2>&1 &)"
+        else
+          # Post-start health poll: give the server a few seconds to come up.
+          _started=false
+          for _i in 1 2 3 4 5; do
+            if python3 -c "import urllib.request as u; u.urlopen('http://127.0.0.1:${DASHBOARD_PORT}/api/config', timeout=2)" 2>/dev/null; then
+              _started=true; break
+            fi
+            sleep 1
+          done
+          if ! $_started; then
+            echo ""
+            echo "WARN: service did not come up — check journalctl --user -u slurm-dash (port ${DASHBOARD_PORT} may be in use)"
+          fi
+
+          echo ""
+          echo "systemd user service installed: slurm-dash"
+          echo "  unit: $UNIT_FILE"
+          echo "  log:  journalctl --user -u slurm-dash -f"
+          echo ""
+          echo "Dashboard is running at:"
+          echo "  http://localhost:${DASHBOARD_PORT}"
+          echo ""
+          echo "To stop:  systemctl --user disable --now slurm-dash"
+          echo "To uninstall completely:  ./uninstall.sh"
+        fi
 
         # Best-effort: linger keeps the user service alive after logout.
-        loginctl enable-linger "$USER" 2>/dev/null || true
-
-        echo ""
-        echo "systemd user service installed: slurm-dash"
-        echo "  unit: $UNIT_FILE"
-        echo "  log:  journalctl --user -u slurm-dash -f"
-        echo ""
-        echo "Dashboard is running at:"
-        echo "  http://localhost:${DASHBOARD_PORT}"
-        echo ""
-        echo "To stop:  systemctl --user disable --now slurm-dash"
-        echo "To uninstall completely:  ./uninstall.sh"
+        if ! loginctl enable-linger "$USER" 2>/dev/null; then
+          echo "WARN: could not enable linger; the dashboard will stop on logout. Run: sudo loginctl enable-linger $USER"
+        fi
     else
         # No usable systemd (common in WSL without [boot] systemd=true).
         echo ""
@@ -222,6 +262,7 @@ UNIT
             echo ""
         else
             echo "systemd user bus not available -- cannot install auto-start service."
+            echo "  (SSH-only box? try: loginctl enable-linger \"$USER\" and re-run, or start a user session.)"
             echo ""
         fi
         echo "For now, start the dashboard manually:"

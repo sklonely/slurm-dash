@@ -32,6 +32,10 @@ SSH_CMD="ssh -F $DASH_SSH_CONFIG dash-submit"
 
 SAVINGS_FILE="$APP_ROOT/data/hpc_savings.json"
 
+# Portable md5 shim: macOS has `md5` (BSD), Linux has `md5sum`.
+# Both produce a 32-char hex digest; `cut -d' ' -f1` extracts it from either.
+_md5() { if command -v md5sum >/dev/null 2>&1; then md5sum; else md5; fi; }
+
 mkdir -p "$APP_ROOT/data"
 
 # Exponential backoff retry for the SSH command. Returns the captured stdout on
@@ -86,7 +90,7 @@ queue_hash() {
     printf 'gmem|%s' "$(printf '%s\n' "$raw" | awk -F'|' '
         { id=$1; sub(/_.*/,"",id); base[id]=1; if ($2=="RUNNING") run[id]=1 }
         END { for (id in base) print id":"(run[id]?"R":"P") }' | sort)" \
-        | md5sum 2>/dev/null | cut -d' ' -f1
+        | _md5 2>/dev/null | cut -d' ' -f1
 }
 
 # Change-driven (event-like) refresh policy. The cheap queue_hash probe runs

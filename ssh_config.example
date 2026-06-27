@@ -12,7 +12,9 @@
 #   Dedicated Host aliases + dedicated ControlPaths (dash-gw-* / dash-sub-*) mean
 #   this can never collide with or disturb the user's interactive ~/.ssh/config
 #   masters. `ssh -F` also makes ssh ignore ~/.ssh/config, so this file is
-#   self-contained. Host-key checking still uses the default ~/.ssh/known_hosts.
+#   self-contained. Host-key checking uses accept-new (TOFU: automatically
+#   records a new host key on first contact, rejects changes afterwards) and
+#   stores keys in the default ~/.ssh/known_hosts.
 #
 # NODE CHOICE (submit-a / submit-b / submit-c)
 #   We deliberately use the generic round-robin name `submit.hpc.engr...`.
@@ -32,6 +34,8 @@ Host dash-gateway
     IdentityFile __SSH_IDENTITY__
     IdentitiesOnly yes
     BatchMode yes
+    StrictHostKeyChecking accept-new
+    UserKnownHostsFile ~/.ssh/known_hosts
     ConnectTimeout 20
     ControlMaster auto
     ControlPath ~/.ssh/cm/dash-gw-%C
@@ -51,6 +55,8 @@ Host dash-submit
     IdentityFile __SSH_IDENTITY__
     IdentitiesOnly yes
     BatchMode yes
+    StrictHostKeyChecking accept-new
+    UserKnownHostsFile ~/.ssh/known_hosts
     ConnectTimeout 20
     ControlMaster auto
     ControlPath ~/.ssh/cm/dash-sub-%C
