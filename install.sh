@@ -14,6 +14,15 @@ set -euo pipefail
 
 APP_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
+# Optional mode, forwarded to the SSH doctor preflight.
+DOCTOR_FLAG=""
+case "${1:-}" in
+  --auto)   DOCTOR_FLAG="--auto" ;;
+  --manual) DOCTOR_FLAG="--manual" ;;
+  "")       ;;
+  *) echo "usage: $0 [--auto|--manual]" >&2; exit 2 ;;
+esac
+
 # ── Step 1: config.env ─────────────────────────────────────────────
 if [ ! -f "$APP_ROOT/config.env" ]; then
     cp "$APP_ROOT/config.example.env" "$APP_ROOT/config.env"
@@ -56,6 +65,20 @@ sed \
     "$APP_ROOT/ssh_config.example" > "$APP_ROOT/ssh_config"
 
 echo "Generated ssh_config."
+
+# ── Step 3.5: SSH preflight (guided) ───────────────────────────────
+# New users don't need to know the gateway/jump-host details — doctor.sh checks
+# the whole path and fixes the common first-time problems. Non-fatal: install
+# proceeds even if SSH isn't working yet (dashboard just shows no data until it is).
+echo ""
+echo "── Checking SSH (your machine → gateway → submit node) ──"
+if bash "$APP_ROOT/doctor.sh" $DOCTOR_FLAG; then
+  :
+else
+  echo ""
+  echo "⚠ SSH not working yet — installing anyway; the dashboard will show no data"
+  echo "  until it connects. Fix it then re-run:  ./doctor.sh"
+fi
 
 # ── Step 4: data directory ─────────────────────────────────────────
 mkdir -p "$APP_ROOT/data"

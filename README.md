@@ -32,6 +32,32 @@ $EDITOR config.env   # set SLURM_USER=yournetid
 open http://localhost:8899
 ```
 
+## First-time SSH setup (you don't need to know the jump host)
+
+The dashboard reaches the cluster over **two hops** — your machine → the gateway
+(`access.engr.oregonstate.edu`) → a submit node — via `ProxyJump`. You don't have
+to configure any of that: `install.sh` runs a **connection doctor** that checks the
+whole path and fixes the common first-time problems for you.
+
+```bash
+./doctor.sh            # interactive (default): explains each issue, asks before fixing
+./doctor.sh --auto     # fix without prompting where safe (still needs your OSU password ONCE)
+./doctor.sh --manual   # diagnose only: print the exact commands, change nothing
+```
+
+It checks, in order:
+1. **Local SSH key** — if you have none, it offers to generate `~/.ssh/id_ed25519`.
+2. **ssh_config** — self-heals if missing.
+3. **The connection** — and classifies any failure into plain-language fixes:
+   - *key not authorized* → offers to `ssh-copy-id` your **public** key to the cluster
+     (you type your OSU password once; OSU's gateway + submit **share your home dir**,
+     so that single copy authorizes **both** hops — your private key never leaves your machine).
+   - *can't reach the gateway* → reminds you to get on campus Wi-Fi / OSU VPN.
+   - *Duo / 2FA* → tells you to warm up the connection once interactively.
+
+Re-run `./doctor.sh` any time the connection breaks. (Which hop does the key go to?
+Both — but you only ever install **one local key** and copy its public half **once**.)
+
 ## How it works
 
 | Component      | File          | Purpose |
