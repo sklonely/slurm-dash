@@ -1,5 +1,16 @@
 # slurm-dash
 
+> ## For LLM Agents
+> Installing with an AI coding agent (Claude Code, etc.)? Give it this — it will fetch
+> the full install + smoke-test guide and follow it step by step:
+> ```
+> Fetch the full guide and follow it step by step:
+> curl -fsSL https://raw.githubusercontent.com/sklonely/slurm-dash/main/installation.md
+> ```
+> (The `curl` resolves only if this repo is **public**, or if your agent has GitHub
+> access to it. If the repo is private, clone it first and tell your agent to read
+> `installation.md`.)
+
 A self-hosted SLURM dashboard for the OSU College of Engineering HPC cluster.
 Real-time job monitoring, node status, GPU utilization, queue depth, and live
 job-log streaming -- all from a single-page web UI backed by a lightweight
