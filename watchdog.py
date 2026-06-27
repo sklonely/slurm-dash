@@ -28,6 +28,7 @@ APP_ROOT = Path(__file__).resolve().parent
 DATA_DIR = APP_ROOT / "data"
 OUT = DATA_DIR / "hpc_watchdog.json"
 INTERVAL_S = int(os.environ.get("WATCHDOG_INTERVAL", "300"))
+LOG_MAX_BYTES = int(os.environ.get("LOG_MAX_BYTES", "5000000"))
 SSH_CONNECT_TIMEOUT = 15
 
 SLURM_USER = os.environ.get("SLURM_USER", "")
@@ -64,6 +65,22 @@ def notify(title: str, body: str) -> None:
         # Other platforms: no-op.
     except Exception:
         pass
+
+
+def rotate_log(path: Path) -> None:
+    """Copytruncate rotation: if *path* exceeds LOG_MAX_BYTES, back it up to
+    ``<path>.1`` and truncate the original **in place** so launchd/systemd
+    file-descriptors keep working.  Never raises."""
+    try:
+        if not path.exists():
+            return
+        if path.stat().st_size <= LOG_MAX_BYTES:
+            return
+        shutil.copy2(path, str(path) + ".1")
+        with open(path, "r+") as f:
+            f.truncate(0)
+    except Exception:
+        pass  # log housekeeping must never crash the watchdog
 
 
 def probe() -> tuple[bool, int, str, int, str]:
@@ -136,6 +153,8 @@ def main():
         f"[watchdog] start, user={SLURM_USER}, interval={INTERVAL_S}s, prev_state={prev_state}\n"
     )
     while True:
+        rotate_log(DATA_DIR / "server.log")
+        rotate_log(DATA_DIR / "watchdog.log")
         ok, latency, node, jobs, reason = probe()
         prev_payload = write_status(ok, latency, node, jobs, reason, prev_payload)
         sys.stderr.write(

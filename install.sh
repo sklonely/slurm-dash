@@ -175,15 +175,78 @@ PLIST
       tail -5 "$APP_ROOT/data/server.log" 2>/dev/null || true
     fi
 
+    # ── macOS: Watchdog LaunchAgent ────────────────────────────────
+    WD_PLIST_LABEL="com.${SLURM_USER}.slurm-dash-watchdog"
+    WD_PLIST_PATH="$HOME/Library/LaunchAgents/${WD_PLIST_LABEL}.plist"
+
+    if launchctl list "$WD_PLIST_LABEL" &>/dev/null; then
+        launchctl unload "$WD_PLIST_PATH" 2>/dev/null || true
+    fi
+
+    cat > "$WD_PLIST_PATH" <<WDPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${WD_PLIST_LABEL}</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>${PYBIN}</string>
+    <string>${APP_ROOT}/watchdog.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>${APP_ROOT}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>SLURM_USER</key>
+    <string>${SLURM_USER}</string>
+    <key>SLURM_GROUP</key>
+    <string>${SLURM_GROUP}</string>
+    <key>WATCHDOG_INTERVAL</key>
+    <string>${WATCHDOG_INTERVAL:-300}</string>
+    <key>LOG_MAX_BYTES</key>
+    <string>${LOG_MAX_BYTES:-5000000}</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>${APP_ROOT}/data/watchdog.log</string>
+  <key>StandardErrorPath</key>
+  <string>${APP_ROOT}/data/watchdog.log</string>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>
+WDPLIST
+
+    launchctl load "$WD_PLIST_PATH"
+
     echo ""
-    echo "LaunchAgent installed: $PLIST_LABEL"
-    echo "  plist: $PLIST_PATH"
-    echo "  log:   $APP_ROOT/data/server.log"
+    echo "LaunchAgents installed:"
+    echo "  server:   $PLIST_LABEL"
+    echo "    plist:  $PLIST_PATH"
+    echo "    log:    $APP_ROOT/data/server.log"
+    echo "  watchdog: $WD_PLIST_LABEL  (health badge + cluster up/down notifications)"
+    echo "    plist:  $WD_PLIST_PATH"
+    echo "    log:    $APP_ROOT/data/watchdog.log"
+    echo "  Logs are size-capped at LOG_MAX_BYTES (default 5 MB); one .1 backup kept."
     echo ""
     echo "Dashboard is running at:"
     echo "  http://localhost:${DASHBOARD_PORT}"
     echo ""
-    echo "To stop:  launchctl unload $PLIST_PATH"
+    echo "To stop server:   launchctl unload $PLIST_PATH"
+    echo "To stop watchdog: launchctl unload $WD_PLIST_PATH"
     echo "To uninstall completely:  ./uninstall.sh"
     ;;
 
@@ -231,18 +294,52 @@ UNIT
             echo ""
             echo "WARN: service did not come up — check journalctl --user -u slurm-dash (port ${DASHBOARD_PORT} may be in use)"
           fi
-
-          echo ""
-          echo "systemd user service installed: slurm-dash"
-          echo "  unit: $UNIT_FILE"
-          echo "  log:  journalctl --user -u slurm-dash -f"
-          echo ""
-          echo "Dashboard is running at:"
-          echo "  http://localhost:${DASHBOARD_PORT}"
-          echo ""
-          echo "To stop:  systemctl --user disable --now slurm-dash"
-          echo "To uninstall completely:  ./uninstall.sh"
         fi
+
+        # ── Linux: Watchdog systemd user service ───────────────────
+        WD_UNIT_FILE="$UNIT_DIR/slurm-dash-watchdog.service"
+
+        cat > "$WD_UNIT_FILE" <<WDUNIT
+[Unit]
+Description=OSU SLURM Dashboard Watchdog
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env python3 ${APP_ROOT}/watchdog.py
+WorkingDirectory=${APP_ROOT}
+Environment=SLURM_USER=${SLURM_USER}
+Environment=SLURM_GROUP=${SLURM_GROUP}
+Environment=WATCHDOG_INTERVAL=${WATCHDOG_INTERVAL:-300}
+Environment=LOG_MAX_BYTES=${LOG_MAX_BYTES:-5000000}
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+WDUNIT
+
+        systemctl --user daemon-reload
+        if ! systemctl --user enable --now slurm-dash-watchdog; then
+          echo "WARN: could not start the watchdog service (non-fatal)"
+        fi
+
+        echo ""
+        echo "systemd user services installed:"
+        echo "  server:   slurm-dash"
+        echo "    unit:   $UNIT_FILE"
+        echo "    log:    journalctl --user -u slurm-dash -f"
+        echo "  watchdog: slurm-dash-watchdog  (health badge + cluster up/down notifications)"
+        echo "    unit:   $WD_UNIT_FILE"
+        echo "    log:    journalctl --user -u slurm-dash-watchdog -f"
+        echo "  Logs are size-capped at LOG_MAX_BYTES (default 5 MB); one .1 backup kept."
+        echo ""
+        echo "Dashboard is running at:"
+        echo "  http://localhost:${DASHBOARD_PORT}"
+        echo ""
+        echo "To stop server:   systemctl --user disable --now slurm-dash"
+        echo "To stop watchdog: systemctl --user disable --now slurm-dash-watchdog"
+        echo "To uninstall completely:  ./uninstall.sh"
 
         # Best-effort: linger keeps the user service alive after logout.
         if ! loginctl enable-linger "$USER" 2>/dev/null; then
@@ -268,6 +365,7 @@ UNIT
         echo "For now, start the dashboard manually:"
         echo "  ./run.sh                                        # foreground (Ctrl-C to stop)"
         echo "  nohup ./run.sh > data/server.log 2>&1 &         # background"
+        echo "  (optional health/notifications: nohup python3 watchdog.py > data/watchdog.log 2>&1 &)"
         echo ""
         echo "Dashboard will be at:  http://localhost:${DASHBOARD_PORT}"
     fi

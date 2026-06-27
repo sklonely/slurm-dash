@@ -51,6 +51,23 @@ case "$OS" in
     else
         echo "Plist not found at $PLIST_PATH -- nothing to remove."
     fi
+
+    # ── macOS: Watchdog LaunchAgent ────────────────────────────────
+    if [ -n "$SLURM_USER" ]; then
+        WD_PLIST_LABEL="com.${SLURM_USER}.slurm-dash-watchdog"
+        WD_PLIST_PATH="$HOME/Library/LaunchAgents/${WD_PLIST_LABEL}.plist"
+    else
+        # Fallback: find by pattern.
+        WD_PLIST_PATH=$(ls "$HOME/Library/LaunchAgents"/com.*.slurm-dash-watchdog.plist 2>/dev/null | head -1 || true)
+        WD_PLIST_LABEL=$(basename "${WD_PLIST_PATH:-.}" .plist 2>/dev/null || true)
+    fi
+    if [ -n "${WD_PLIST_PATH:-}" ] && [ -f "$WD_PLIST_PATH" ]; then
+        launchctl unload "$WD_PLIST_PATH" 2>/dev/null || true
+        rm -f "$WD_PLIST_PATH"
+        echo "Unloaded and removed: $WD_PLIST_LABEL"
+        echo "  ($WD_PLIST_PATH)"
+        REMOVED=true
+    fi
     ;;
 
   Linux)
@@ -60,13 +77,24 @@ case "$OS" in
     if systemctl --user is-enabled slurm-dash &>/dev/null || [ -f "$UNIT_FILE" ]; then
         systemctl --user disable --now slurm-dash 2>/dev/null || true
         rm -f "$UNIT_FILE"
-        systemctl --user daemon-reload 2>/dev/null || true
         echo "Stopped and removed systemd user service: slurm-dash"
         echo "  ($UNIT_FILE)"
         REMOVED=true
     else
         echo "No slurm-dash systemd user service found. Nothing to uninstall."
     fi
+
+    # ── Linux: Watchdog systemd user service ───────────────────────
+    WD_UNIT_FILE="$HOME/.config/systemd/user/slurm-dash-watchdog.service"
+    if systemctl --user is-enabled slurm-dash-watchdog &>/dev/null || [ -f "$WD_UNIT_FILE" ]; then
+        systemctl --user disable --now slurm-dash-watchdog 2>/dev/null || true
+        rm -f "$WD_UNIT_FILE"
+        echo "Stopped and removed systemd user service: slurm-dash-watchdog"
+        echo "  ($WD_UNIT_FILE)"
+        REMOVED=true
+    fi
+
+    systemctl --user daemon-reload 2>/dev/null || true
     ;;
 
   *)

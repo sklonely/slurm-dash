@@ -204,7 +204,7 @@ Both -- but you only ever install **one local key** and copy its public half **o
 |----------------|---------------|---------|
 | **Server**     | `server.py`   | HTTP server serving `web/` + API endpoints (`/api/refresh`, `/api/status`, `/api/health`, `/api/config`, `/api/joblog/stream`). |
 | **Collector**   | `collect.sh`  | SSH into the submit node, run ~20 SLURM queries, render JSON to `data/hpc_status.json`. Smart change-detection: only does the heavy dump when your queue actually changes. |
-| **Watchdog**   | `watchdog.py` | Probes the submit node every 5 min, writes `data/hpc_watchdog.json`, fires desktop notifications on state transitions (macOS: osascript, Linux: notify-send). (Optional; not auto-started.) |
+| **Watchdog**   | `watchdog.py` | Probes the submit node every 5 min, writes `data/hpc_watchdog.json`, fires desktop notifications on state transitions (macOS: osascript, Linux: notify-send). Auto-installed as a second service by `install.sh` (powers the `/api/health` badge). Also rotates `server.log` and `watchdog.log` via copytruncate at `LOG_MAX_BYTES` (default 5 MB, one `.1` backup). |
 | **Runner**     | `run.sh`      | Universal foreground launcher. Works on any OS. Use when you don't have (or don't want) a service manager. |
 | **Frontend**   | `web/index.html` | React SPA that fetches JSON from the API endpoints and renders the dashboard. |
 | **SSH config** | `ssh_config`  | Generated from `ssh_config.example` at install time. Dedicated ControlMaster for the dashboard (isolated from your interactive SSH). |
@@ -223,6 +223,8 @@ on the submit node is near zero (no reconnects, no repeated slurmctld RPCs).
 | `SLURM_GROUP` | `eecs` | Your SLURM account/group (displayed in the header). |
 | `SSH_IDENTITY` | `~/.ssh/id_ed25519` | Path to the SSH private key for the gateway. |
 | `DASHBOARD_PORT` | `8899` | Local port the server binds to. |
+| `WATCHDOG_INTERVAL` | `300` | How often the watchdog probes the submit node (seconds). |
+| `LOG_MAX_BYTES` | `5000000` | Max log file size before copytruncate rotation (bytes). One `.1` backup kept. |
 | `DASHBOARD_HOST` | `0.0.0.0` | Bind address (env only, not in config.env). |
 | `DASHBOARD_DUMP_THROTTLE_S` | `15` | Minimum seconds between refresh kicks (env only). |
 
@@ -275,8 +277,9 @@ can cause lock contention during job-churn bursts. Mitigations:
 | Job-log modal won't stream | You hit `JOBLOG_MAX_STREAMS` (default 8) -- close other log modals. |
 | Reachable from other machines unexpectedly | It binds `0.0.0.0`. For localhost-only, set `DASHBOARD_HOST=127.0.0.1`. |
 
-Logs: `data/server.log` (server stdout/err when running via LaunchAgent or `nohup`).
-For systemd: `journalctl --user -u slurm-dash -f`.
+Logs: `data/server.log` (server) and `data/watchdog.log` (watchdog, macOS/nohup only).
+For systemd: `journalctl --user -u slurm-dash -f` / `journalctl --user -u slurm-dash-watchdog -f`.
+Logs are size-capped at `LOG_MAX_BYTES` (default 5 MB) by the watchdog; one `.1` backup is kept.
 
 ## Uninstall
 
@@ -284,9 +287,9 @@ For systemd: `journalctl --user -u slurm-dash -f`.
 ./uninstall.sh
 ```
 
-This removes the auto-start service (LaunchAgent on macOS, systemd user service
-on Linux). Your `config.env`, `ssh_config`, and `data/` are preserved. To fully
-clean up, delete the `slurm-dash` directory.
+This removes both auto-start services -- the server and the watchdog (LaunchAgent
+on macOS, systemd user services on Linux). Your `config.env`, `ssh_config`, and
+`data/` are preserved. To fully clean up, delete the `slurm-dash` directory.
 
 ## Security
 
