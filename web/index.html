@@ -792,7 +792,7 @@ function mapAccount(account, savings, cfgUser, cfgGroup) {
     share: { used: ((a.share_used_mb||0)/1024).toFixed(1),  quota: Math.round((a.share_total_mb||1572864)/1024), unit: 'G' },
     fairshare: a.fairshare || 0,
     dgxh_quota: { used: 0, total: Math.round((a.dgxh_gpu_runmins_limit||2880)/60), unit: 'h' },
-    savings: { since: '2026-04-01', usd: Math.round(s.total_savings || 0), gpu_hours: +(s.total_hours || 0).toFixed(1) },
+    savings: { period: s.period || '', usd: Math.round(s.total_savings || 0), gpu_hours: +(s.total_hours || 0).toFixed(1) },
   };
 }
 
@@ -914,7 +914,7 @@ function Account({ a }) {
       <div className="cell">
         <div className="lbl">Saved vs Cloud</div>
         <div className="val tnum">${a.savings.usd}</div>
-        <div className="sub dim">{a.savings.gpu_hours} GPU-h since {a.savings.since.slice(5)}</div>
+        <div className="sub dim">{a.savings.gpu_hours} GPU-h this month{a.savings.period ? ` (${a.savings.period})` : ''}</div>
       </div>
     </div>
   );

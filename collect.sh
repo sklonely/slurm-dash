@@ -480,14 +480,14 @@ part_counts = [{
 
 # GPU-hours / cloud-cost-saved is maintained by the hourly cold-tier scan
 # (refresh_cost -> hpc_savings.json). The per-refresh dump only loads & embeds
-# it, keeping the 2-month sacct off the hot path.
+# it, keeping the monthly sacct scan off the hot path.
 import os
 savings_path = os.environ.get('SAVINGS_FILE', '$SAVINGS_FILE')
 try:
     with open(savings_path) as f:
         persistent = json.load(f)
 except:
-    persistent = {'seen_jobs': [], 'total_hours': 0, 'total_savings': 0, 'partition_hours': {}}
+    persistent = {'seen_jobs': [], 'total_hours': 0, 'total_savings': 0, 'partition_hours': {}, 'period': ''}
 
 # share has ~62 nodes, mostly pure CPU -- keep only GPU-bearing ones for the dashboard.
 share_nodes = [n for n in share_nodes if 'gpu' in (n.get('gres') or '').lower()]
@@ -533,26 +533,42 @@ print(json.dumps(data, indent=2))
     echo "[hpc-status] $(date '+%H:%M:%S') -> $OUT ($(wc -c < "$OUT" | tr -d ' ') bytes)"
 }
 
-# Cold tier: the cumulative GPU-hours / cloud-cost-saved figure comes from a
-# 2-month `sacct` scan -- by far the heaviest query we issue (it hits the
-# slurmdbd accounting DB on disk, not the in-memory controller). It's a slow,
-# cumulative number, so we refresh it at most ONCE A DAY into hpc_savings.json;
-# the per-refresh dump just reads that file. This is the single biggest cut to
-# our disk/DB footprint on the OSU side. Gated on the savings-file mtime; set
-# COST_FORCE=1 (or `--cost`) to force a refresh now.
-COST_MAX_AGE="${COST_MAX_AGE:-86400}"
+# Cold tier: the GPU-hours / cloud-cost-saved figure for the CURRENT MONTH comes
+# from a `sacct` scan over this calendar month -- by far the heaviest query we
+# issue (it hits the slurmdbd accounting DB on disk, not the in-memory controller).
+# So we refresh it at most every COST_MAX_AGE (6h) into hpc_savings.json on SUCCESS;
+# an empty/failed scan retries within COST_RETRY_AGE (15min) instead of freezing.
+# The per-refresh dump just reads that file. This is the single biggest cut to our
+# disk/DB footprint on the OSU side. set COST_FORCE=1 (or `--cost`) to force now.
+COST_MAX_AGE="${COST_MAX_AGE:-21600}"      # 6h between SUCCESSFUL refreshes (was 86400 = once/day)
+COST_RETRY_AGE="${COST_RETRY_AGE:-900}"    # after an empty/failed scan, retry in 15min (don't wait the full gate)
+COST_ATTEMPT_FILE="$APP_ROOT/data/.cost_attempt"
 refresh_cost() {
-    local age raw
-    if [ "${COST_FORCE:-0}" != "1" ] && [ -f "$SAVINGS_FILE" ]; then
-        age=$(( $(date +%s) - $(stat -f %m "$SAVINGS_FILE" 2>/dev/null || stat -c %Y "$SAVINGS_FILE" 2>/dev/null || echo 0) ))
-        [ "$age" -lt "$COST_MAX_AGE" ] && return 0
+    local age att raw now
+    now=$(date +%s)
+    if [ "${COST_FORCE:-0}" != "1" ]; then
+        # SAVINGS_FILE mtime advances ONLY on a successful data write (see python below).
+        if [ -f "$SAVINGS_FILE" ]; then
+            age=$(( now - $(stat -f %m "$SAVINGS_FILE" 2>/dev/null || stat -c %Y "$SAVINGS_FILE" 2>/dev/null || echo 0) ))
+            [ "$age" -lt "$COST_MAX_AGE" ] && return 0   # fresh successful data -> nothing to do
+        fi
+        # Data is stale/absent: rate-limit RETRIES (so a transient empty scan can't
+        # hammer slurmdbd) but retry far sooner than the full gate -- this is the fix
+        # for "the cost sometimes never shows up": one empty scan used to freeze it
+        # for a whole day; now it self-heals within COST_RETRY_AGE.
+        if [ -f "$COST_ATTEMPT_FILE" ]; then
+            att=$(( now - $(stat -f %m "$COST_ATTEMPT_FILE" 2>/dev/null || stat -c %Y "$COST_ATTEMPT_FILE" 2>/dev/null || echo 0) ))
+            [ "$att" -lt "$COST_RETRY_AGE" ] && return 0
+        fi
     fi
+    touch "$COST_ATTEMPT_FILE" 2>/dev/null || true   # record this attempt (success or not)
     # Track the whole account, not a job-name pattern: job names/IDs churn
     # but the account doesn't, so a `grep` filter silently froze the total
     # once naming moved on. `-X` keeps only the job allocation (no
     # .batch/.extern double-count); `-P` is pipe-delimited so an empty
     # Partition column can't shift positional parsing.
-    raw=$(ssh_retry "sacct -u $SLURM_USER -X --starttime=2026-04-01 --format=Elapsed,Partition,State -P -n 2>/dev/null" 2) || return 1
+    # MONTHLY billing period: scan only the current calendar month (the 1st -> now).
+    raw=$(ssh_retry "sacct -u $SLURM_USER -X --starttime=$(date +%Y-%m-01) --format=Elapsed,Partition,State -P -n 2>/dev/null" 3) || return 1
     # Raw passed via env (not string-interpolated) so newlines/quotes can't break it.
     if ! SAVINGS_RAW="$raw" SAVINGS_FILE="$SAVINGS_FILE" python3 - <<'PYEOF'
 import json, os
@@ -591,29 +607,43 @@ for line in raw.strip().splitlines():
         total_savings += hrs * RATES.get(part, 1.00)
         part_hours[part] = part_hours.get(part, 0) + hrs
 
+cur_period = datetime.now().strftime("%Y-%m")   # the monthly billing period
+
 try:
     with open(path) as f:
         persistent = json.load(f)
 except Exception:
     persistent = {"seen_jobs": []}
 
-# Never overwrite a good total with zeros if the scan came back empty.
-if raw.strip():
-    persistent["total_hours"] = round(total_hours, 2)
-    persistent["total_savings"] = round(total_savings, 2)
-    persistent["partition_hours"] = {k: round(v, 2) for k, v in part_hours.items()}
+def _write(th, ts, ph, note):
+    persistent["total_hours"] = round(th, 2)
+    persistent["total_savings"] = round(ts, 2)
+    persistent["partition_hours"] = {k: round(v, 2) for k, v in ph.items()}
+    persistent["period"] = cur_period
     persistent["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(path, "w") as f:
         json.dump(persistent, f, indent=2)
-    print("[hpc-status] cost refreshed: %.1f GPU-hrs, $%.0f saved" % (total_hours, total_savings))
+    print("[hpc-status] " + note)
+
+if raw.strip():
+    _write(total_hours, total_savings, part_hours,
+           "cost refreshed: %.1f GPU-hrs, $%.0f this month (%s)" % (total_hours, total_savings, cur_period))
+elif persistent.get("period") != cur_period:
+    # New month and no jobs yet -> reset to zero for the new period (don't carry last month over).
+    _write(0.0, 0.0, {}, "new billing month %s -> reset to 0" % cur_period)
 else:
-    print("[hpc-status] cost scan returned no rows; keeping previous savings")
+    # Same month, scan came back empty (a transient glitch): keep this month's
+    # last good total. We do NOT write, so SAVINGS mtime stays stale -> the bash
+    # gate retries within COST_RETRY_AGE instead of freezing.
+    print("[hpc-status] cost scan returned no rows; keeping this month's previous total")
 PYEOF
     then
         return 1
     fi
-    # Honor the hourly gate even on an empty scan (mtime = last attempt).
-    touch "$SAVINGS_FILE" 2>/dev/null || true
+    # NOTE: we deliberately do NOT touch SAVINGS_FILE here. Its mtime advances only
+    # when the python actually wrote fresh data (a real success or a month reset).
+    # Empty/failed scans are rate-limited via COST_ATTEMPT_FILE instead, so a single
+    # transient miss retries in COST_RETRY_AGE rather than freezing the cost for a day.
 }
 
 # Smart wrapper: skip dump_once when queue hash unchanged AND JSON is fresh.
