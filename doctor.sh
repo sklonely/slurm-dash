@@ -97,6 +97,19 @@ for attempt in 1 2 3; do
       continue ;;
     AUTH)
       echo "   ✗ Your key isn't authorized on the cluster yet."
+      # No interactive terminal (e.g. an AI agent ran us non-interactively): the
+      # ssh-copy-id below needs the user's OSU password + Duo on a real TTY and would
+      # just hang. Stop with a clear hand-off so the agent/caller knows a human must
+      # do this one step, instead of blocking until timeout.
+      if [ "$MODE" != manual ] && { [ ! -t 0 ] || [ ! -t 1 ]; }; then
+        echo "   ✗ Copying your key needs your OSU password + Duo, which requires an interactive"
+        echo "     terminal — there isn't one here (no TTY)."
+        echo "     → Open a REAL terminal yourself and run:"
+        echo "         cd \"$APP_ROOT\" && ./doctor.sh --auto"
+        echo "       (enter your OSU password once + approve Duo; after that it is key-only"
+        echo "       forever), then resume the install."
+        exit 3
+      fi
       if [ "$MODE" = manual ]; then
         echo "     Run (type your OSU password once):"
         if command -v ssh-copy-id >/dev/null 2>&1; then
