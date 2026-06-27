@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# install.sh -- set up the OSU SLURM dashboard on macOS.
+# install.sh -- set up the OSU SLURM dashboard.
 #
 # What it does:
 #   1. Creates config.env from config.example.env if missing (then stops).
 #   2. Reads config.env and validates SLURM_USER is set.
 #   3. Generates ssh_config from ssh_config.example with the user's identity.
-#   4. Installs a macOS LaunchAgent that runs server.py on login (KeepAlive).
+#   4. Detects the OS and installs an appropriate auto-start service:
+#      - macOS:  LaunchAgent (runs server.py on login, KeepAlive).
+#      - Linux:  systemd user service (if systemd is available).
+#      - WSL without systemd: prints instructions for ./run.sh.
 #   5. Prints the URL.
 #
 # Idempotent: safe to re-run after changing config.env.
@@ -83,18 +86,27 @@ fi
 # ── Step 4: data directory ─────────────────────────────────────────
 mkdir -p "$APP_ROOT/data"
 
-# ── Step 5: LaunchAgent ────────────────────────────────────────────
-PLIST_LABEL="com.${SLURM_USER}.slurm-dash"
-PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
-
-# Unload old version if present (ignore errors on first install).
-if launchctl list "$PLIST_LABEL" &>/dev/null; then
-    launchctl unload "$PLIST_PATH" 2>/dev/null || true
+# ── Step 5: auto-start service (OS-dependent) ─────────────────────
+OS="$(uname -s)"
+IS_WSL=false
+if [ "$OS" = "Linux" ] && grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+    IS_WSL=true
 fi
 
-mkdir -p "$HOME/Library/LaunchAgents"
+case "$OS" in
+  Darwin)
+    # ── macOS: LaunchAgent ──────────────────────────────────────────
+    PLIST_LABEL="com.${SLURM_USER}.slurm-dash"
+    PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
 
-cat > "$PLIST_PATH" <<PLIST
+    # Unload old version if present (ignore errors on first install).
+    if launchctl list "$PLIST_LABEL" &>/dev/null; then
+        launchctl unload "$PLIST_PATH" 2>/dev/null || true
+    fi
+
+    mkdir -p "$HOME/Library/LaunchAgents"
+
+    cat > "$PLIST_PATH" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -139,15 +151,92 @@ cat > "$PLIST_PATH" <<PLIST
 </plist>
 PLIST
 
-launchctl load "$PLIST_PATH"
+    launchctl load "$PLIST_PATH"
 
-echo ""
-echo "LaunchAgent installed: $PLIST_LABEL"
-echo "  plist: $PLIST_PATH"
-echo "  log:   $APP_ROOT/data/server.log"
-echo ""
-echo "Dashboard is running at:"
-echo "  http://localhost:${DASHBOARD_PORT}"
-echo ""
-echo "To stop:  launchctl unload $PLIST_PATH"
-echo "To uninstall completely:  ./uninstall.sh"
+    echo ""
+    echo "LaunchAgent installed: $PLIST_LABEL"
+    echo "  plist: $PLIST_PATH"
+    echo "  log:   $APP_ROOT/data/server.log"
+    echo ""
+    echo "Dashboard is running at:"
+    echo "  http://localhost:${DASHBOARD_PORT}"
+    echo ""
+    echo "To stop:  launchctl unload $PLIST_PATH"
+    echo "To uninstall completely:  ./uninstall.sh"
+    ;;
+
+  Linux)
+    # ── Linux (incl. WSL): systemd user service if available ────────
+    if systemctl --user show-environment >/dev/null 2>&1; then
+        # systemd user bus is usable.
+        UNIT_DIR="$HOME/.config/systemd/user"
+        UNIT_FILE="$UNIT_DIR/slurm-dash.service"
+        mkdir -p "$UNIT_DIR"
+
+        cat > "$UNIT_FILE" <<UNIT
+[Unit]
+Description=OSU SLURM Dashboard
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env python3 ${APP_ROOT}/server.py
+WorkingDirectory=${APP_ROOT}
+Environment=SLURM_USER=${SLURM_USER}
+Environment=SLURM_GROUP=${SLURM_GROUP}
+Environment=DASHBOARD_PORT=${DASHBOARD_PORT}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+
+        systemctl --user daemon-reload
+        systemctl --user enable --now slurm-dash
+
+        # Best-effort: linger keeps the user service alive after logout.
+        loginctl enable-linger "$USER" 2>/dev/null || true
+
+        echo ""
+        echo "systemd user service installed: slurm-dash"
+        echo "  unit: $UNIT_FILE"
+        echo "  log:  journalctl --user -u slurm-dash -f"
+        echo ""
+        echo "Dashboard is running at:"
+        echo "  http://localhost:${DASHBOARD_PORT}"
+        echo ""
+        echo "To stop:  systemctl --user disable --now slurm-dash"
+        echo "To uninstall completely:  ./uninstall.sh"
+    else
+        # No usable systemd (common in WSL without [boot] systemd=true).
+        echo ""
+        if $IS_WSL; then
+            echo "WSL detected but systemd is not available."
+            echo "Auto-start requires systemd. To enable it:"
+            echo "  1. Add to /etc/wsl.conf:"
+            echo "       [boot]"
+            echo "       systemd=true"
+            echo "  2. From PowerShell:  wsl --shutdown"
+            echo "  3. Reopen your Ubuntu terminal and re-run ./install.sh"
+            echo ""
+        else
+            echo "systemd user bus not available -- cannot install auto-start service."
+            echo ""
+        fi
+        echo "For now, start the dashboard manually:"
+        echo "  ./run.sh                                        # foreground (Ctrl-C to stop)"
+        echo "  nohup ./run.sh > data/server.log 2>&1 &         # background"
+        echo ""
+        echo "Dashboard will be at:  http://localhost:${DASHBOARD_PORT}"
+    fi
+    ;;
+
+  *)
+    echo ""
+    echo "Unsupported OS ($OS) for auto-start."
+    echo "Start the dashboard manually:  ./run.sh"
+    echo ""
+    echo "Dashboard will be at:  http://localhost:${DASHBOARD_PORT}"
+    ;;
+esac

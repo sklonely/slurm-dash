@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -58,13 +59,24 @@ def now_utc() -> str:
 
 
 def notify(title: str, body: str) -> None:
-    safe_title = title.replace('"', "'")
-    safe_body = body.replace('"', "'")
+    """Desktop notification. Dispatches by platform; never crashes."""
     try:
-        subprocess.run(
-            ["osascript", "-e", f'display notification "{safe_body}" with title "{safe_title}"'],
-            check=False, capture_output=True, timeout=5,
-        )
+        if sys.platform == "darwin":
+            safe_title = title.replace('"', "'")
+            safe_body = body.replace('"', "'")
+            subprocess.run(
+                ["osascript", "-e",
+                 f'display notification "{safe_body}" with title "{safe_title}"'],
+                check=False, capture_output=True, timeout=5,
+            )
+        elif sys.platform == "linux":
+            if shutil.which("notify-send"):
+                subprocess.run(
+                    ["notify-send", title, body],
+                    check=False, capture_output=True, timeout=5,
+                )
+            # else: no notifier available -- silently skip.
+        # Other platforms: no-op.
     except Exception:
         pass
 

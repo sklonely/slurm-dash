@@ -11,13 +11,22 @@ member on the same cluster can run their own copy.
 ## Prerequisites
 
 - **SSH access** to `access.engr.oregonstate.edu` with your OSU netID + key-based auth.
-- **macOS** (the install script creates a LaunchAgent; the dashboard runs on any OS but auto-start is macOS-only).
-- **Python 3.9+** (ships with macOS).
+- **Python 3.9+** (ships with macOS; install via your package manager on Linux/WSL).
+- **macOS, Linux, or Windows via WSL** (see platform support below).
+
+## Platform support
+
+| Platform | Auto-start method | Notes |
+|----------|-------------------|-------|
+| **macOS** | LaunchAgent (runs on login, KeepAlive) | Fully supported. `./install.sh` sets everything up. |
+| **Linux** | systemd user service | Requires a working systemd user bus. `loginctl enable-linger` is attempted for persistence after logout. |
+| **Windows (WSL2)** | systemd user service (if enabled) | Run everything inside WSL. If systemd is not available, use `./run.sh` manually. See the WSL setup guide below. |
+| **Native Windows** | Not supported | No bash, no SSH ControlMaster. Use WSL instead. |
 
 ## Quickstart
 
 ```bash
-git clone <this-repo> && cd slurm-dash
+git clone https://github.com/sklonely/slurm-dash.git && cd slurm-dash
 
 # 1. Create your config (first run creates the file and exits):
 ./install.sh
@@ -29,13 +38,129 @@ $EDITOR config.env   # set SLURM_USER=yournetid
 ./install.sh
 
 # 4. Open the dashboard:
-open http://localhost:8899
+#    macOS:   open http://localhost:8899
+#    Linux:   xdg-open http://localhost:8899
+#    Windows: open http://localhost:8899 in your browser
+```
+
+## Windows (WSL) setup
+
+If you are on a Windows machine (common for lab members), follow these steps.
+Everything runs inside WSL (Windows Subsystem for Linux) -- the dashboard
+server, the SSH connection, and the keys all live in the Linux environment.
+
+### 1. Install WSL2
+
+Open **PowerShell as Administrator** and run:
+
+```powershell
+wsl --install
+```
+
+This installs WSL2 with Ubuntu by default. When prompted, create a Linux
+username and password. When it finishes, you will have an **Ubuntu** terminal.
+
+### 2. Install dependencies (inside WSL)
+
+Open your Ubuntu terminal and run:
+
+```bash
+sudo apt update && sudo apt install -y git python3 openssh-client
+```
+
+### 3. Clone and configure
+
+```bash
+git clone https://github.com/sklonely/slurm-dash.git ~/slurm-dash
+cd ~/slurm-dash
+cp config.example.env config.env
+```
+
+Edit `config.env` and set `SLURM_USER` to your OSU netID:
+
+```bash
+nano config.env   # or: vim, code, etc.
+```
+
+### 4. SSH key setup
+
+Your SSH key lives inside WSL's `~/.ssh/` directory (not your Windows
+user directory). The connection doctor handles everything:
+
+```bash
+./doctor.sh
+```
+
+It will:
+- Generate an ed25519 key if you don't have one.
+- Offer to copy your public key to the cluster (you type your OSU password once).
+- Test the full connection path (your machine -> gateway -> submit node).
+
+### 5. Install
+
+```bash
+./install.sh
+```
+
+- If your WSL has systemd enabled, it installs a systemd user service that
+  starts automatically.
+- If systemd is not available (the default for most WSL installs), it tells
+  you to start manually with `./run.sh`.
+
+### 6. Open the dashboard from Windows
+
+WSL2 automatically forwards localhost ports to Windows, so just open your
+normal Windows browser and go to:
+
+```
+http://localhost:8899
+```
+
+No extra port forwarding or networking setup needed.
+
+### Optional: enable systemd in WSL (for auto-start)
+
+By default, WSL does not run systemd. To enable it (so `./install.sh` can
+set up a service that survives terminal close):
+
+1. Inside WSL, edit `/etc/wsl.conf`:
+   ```bash
+   sudo nano /etc/wsl.conf
+   ```
+   Add:
+   ```ini
+   [boot]
+   systemd=true
+   ```
+2. From **PowerShell** (not WSL), shut down WSL:
+   ```powershell
+   wsl --shutdown
+   ```
+3. Reopen your Ubuntu terminal and re-run `./install.sh`.
+
+Without systemd, use `./run.sh` (foreground) or `nohup ./run.sh > data/server.log 2>&1 &`
+(background) to start the dashboard.
+
+## Run without a service (any OS)
+
+If you don't want (or can't use) a service manager, `run.sh` starts the
+dashboard in the foreground on any platform:
+
+```bash
+./run.sh
+# Dashboard -> http://localhost:8899  (Ctrl-C to stop)
+```
+
+For background operation without systemd/LaunchAgent:
+
+```bash
+nohup ./run.sh > data/server.log 2>&1 &
 ```
 
 ## First-time SSH setup (you don't need to know the jump host)
 
-The dashboard reaches the cluster over **two hops** — your machine → the gateway
-(`access.engr.oregonstate.edu`) → a submit node — via `ProxyJump`. You don't have
+The dashboard reaches the cluster over **two hops** -- your machine -> the gateway
+(`access.engr.oregonstate.edu`) -> a submit node -- via `ProxyJump`. You don't have
 to configure any of that: `install.sh` runs a **connection doctor** that checks the
 whole path and fixes the common first-time problems for you.
 
@@ -46,17 +171,17 @@ whole path and fixes the common first-time problems for you.
 ```
 
 It checks, in order:
-1. **Local SSH key** — if you have none, it offers to generate `~/.ssh/id_ed25519`.
-2. **ssh_config** — self-heals if missing.
-3. **The connection** — and classifies any failure into plain-language fixes:
-   - *key not authorized* → offers to `ssh-copy-id` your **public** key to the cluster
+1. **Local SSH key** -- if you have none, it offers to generate `~/.ssh/id_ed25519`.
+2. **ssh_config** -- self-heals if missing.
+3. **The connection** -- and classifies any failure into plain-language fixes:
+   - *key not authorized* -> offers to `ssh-copy-id` your **public** key to the cluster
      (you type your OSU password once; OSU's gateway + submit **share your home dir**,
-     so that single copy authorizes **both** hops — your private key never leaves your machine).
-   - *can't reach the gateway* → reminds you to get on campus Wi-Fi / OSU VPN.
-   - *Duo / 2FA* → tells you to warm up the connection once interactively.
+     so that single copy authorizes **both** hops -- your private key never leaves your machine).
+   - *can't reach the gateway* -> reminds you to get on campus Wi-Fi / OSU VPN.
+   - *Duo / 2FA* -> tells you to warm up the connection once interactively.
 
 Re-run `./doctor.sh` any time the connection breaks. (Which hop does the key go to?
-Both — but you only ever install **one local key** and copy its public half **once**.)
+Both -- but you only ever install **one local key** and copy its public half **once**.)
 
 ## How it works
 
@@ -64,7 +189,8 @@ Both — but you only ever install **one local key** and copy its public half **
 |----------------|---------------|---------|
 | **Server**     | `server.py`   | HTTP server serving `web/` + API endpoints (`/api/refresh`, `/api/status`, `/api/health`, `/api/config`, `/api/joblog/stream`). |
 | **Collector**   | `collect.sh`  | SSH into the submit node, run ~20 SLURM queries, render JSON to `data/hpc_status.json`. Smart change-detection: only does the heavy dump when your queue actually changes. |
-| **Watchdog**   | `watchdog.py` | Probes the submit node every 5 min, writes `data/hpc_watchdog.json`, fires macOS notifications on state transitions. |
+| **Watchdog**   | `watchdog.py` | Probes the submit node every 5 min, writes `data/hpc_watchdog.json`, fires desktop notifications on state transitions (macOS: osascript, Linux: notify-send). |
+| **Runner**     | `run.sh`      | Universal foreground launcher. Works on any OS. Use when you don't have (or don't want) a service manager. |
 | **Frontend**   | `web/index.html` | React SPA that fetches JSON from the API endpoints and renders the dashboard. |
 | **SSH config** | `ssh_config`  | Generated from `ssh_config.example` at install time. Dedicated ControlMaster for the dashboard (isolated from your interactive SSH). |
 
@@ -96,29 +222,29 @@ same `slurmctld` adds up. Know the load profile before everyone installs it:
 
 | Situation | SLURM RPCs |
 |-----------|-----------|
-| Browser tab **closed** | watchdog only — **2 RPCs / 5 min**. Negligible. |
-| Tab **open**, your jobs unchanged | one cheap `squeue -u you` per refresh, throttled to ≥15s → **~1 query / 15s**. |
-| Your jobs **change state** | one **heavy dump = ~41 RPCs** (cluster-wide `squeue -p …`, `sinfo`, `sacct`, …). |
+| Browser tab **closed** | watchdog only -- **2 RPCs / 5 min**. Negligible. |
+| Tab **open**, your jobs unchanged | one cheap `squeue -u you` per refresh, throttled to >=15s -> **~1 query / 15s**. |
+| Your jobs **change state** | one **heavy dump = ~41 RPCs** (cluster-wide `squeue -p ...`, `sinfo`, `sacct`, ...). |
 
-What keeps it light: (1) **change-detection** — the 41-query dump only fires when
+What keeps it light: (1) **change-detection** -- the 41-query dump only fires when
 *your own* jobs change state, not on every refresh; (2) the **15s throttle**;
 (3) a persistent **SSH ControlMaster** so all queries share one connection.
 
-⚠️ **Caveat for many simultaneous users:** the ~13 cluster-wide queries in the
-heavy dump are identical across users, so N people each fetching them means N×
-the same load on `slurmctld` (and `sacct` hits `slurmdbd`). With a whole lab this
+Warning: **Caveat for many simultaneous users:** the ~13 cluster-wide queries in the
+heavy dump are identical across users, so N people each fetching them means N
+times the same load on `slurmctld` (and `sacct` hits `slurmdbd`). With a whole lab this
 can cause lock contention during job-churn bursts. Mitigations:
 
 - Raise the throttle and poll less often. Recommended lab-friendly values:
   ```bash
-  # in your env / LaunchAgent
+  # in your env / service config
   export DASHBOARD_DUMP_THROTTLE_S=60     # heavy dump at most once/min
   ```
   and set the UI refresh to 30s, watchdog interval to 600s.
 - **Two-tier (planned):** run one shared collector that does the cluster-wide
   dump once and serves the JSON; each member's dashboard reads that shared view
   and only queries SLURM for *their own* jobs. This collapses cluster-wide load
-  from N× to 1×. (Not yet wired — see `SHARED_STATUS_URL` issue.)
+  from N to 1. (Not yet wired -- see `SHARED_STATUS_URL` issue.)
 
 ## Troubleshooting
 
@@ -128,11 +254,14 @@ can cause lock contention during job-churn bursts. Mitigations:
 | Dashboard loads but shows no data | Check SSH works: `ssh -F ssh_config dash-submit hostname`. If it prompts for a password, set up key-based auth to `access.engr.oregonstate.edu`. |
 | "manifest/JSON missing" or stale | Hit **Refresh** in the UI, or `SLURM_USER=you bash collect.sh --force` and read the error. |
 | Port 8899 already in use | Set `DASHBOARD_PORT=<other>` in `config.env` and re-run `./install.sh`. |
-| LaunchAgent not auto-starting | `launchctl list | grep slurm-dash`; re-`./install.sh`; check `data/server.log`. |
-| Job-log modal won't stream | You hit `JOBLOG_MAX_STREAMS` (default 8) — close other log modals. |
+| LaunchAgent not auto-starting (macOS) | `launchctl list \| grep slurm-dash`; re-`./install.sh`; check `data/server.log`. |
+| systemd service not starting (Linux) | `systemctl --user status slurm-dash`; check `journalctl --user -u slurm-dash`. |
+| WSL: "systemd not available" | Enable systemd in WSL (see WSL setup above) or use `./run.sh`. |
+| Job-log modal won't stream | You hit `JOBLOG_MAX_STREAMS` (default 8) -- close other log modals. |
 | Reachable from other machines unexpectedly | It binds `0.0.0.0`. For localhost-only, set `DASHBOARD_HOST=127.0.0.1`. |
 
-Logs: `data/server.log` (server) and the LaunchAgent stdout/err.
+Logs: `data/server.log` (server stdout/err when running via LaunchAgent or `nohup`).
+For systemd: `journalctl --user -u slurm-dash -f`.
 
 ## Uninstall
 
@@ -140,9 +269,9 @@ Logs: `data/server.log` (server) and the LaunchAgent stdout/err.
 ./uninstall.sh
 ```
 
-This unloads the LaunchAgent and removes the plist. Your `config.env`,
-`ssh_config`, and `data/` are preserved. To fully clean up, delete the
-`slurm-dash` directory.
+This removes the auto-start service (LaunchAgent on macOS, systemd user service
+on Linux). Your `config.env`, `ssh_config`, and `data/` are preserved. To fully
+clean up, delete the `slurm-dash` directory.
 
 ## Security
 
