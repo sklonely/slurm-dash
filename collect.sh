@@ -581,7 +581,9 @@ from datetime import datetime
 raw = os.environ.get("SAVINGS_RAW", "")
 path = os.environ["SAVINGS_FILE"]
 
-# Cloud GPU pricing (USD/hour per GPU), by partition hardware.
+# Rough on-demand cloud GPU pricing (USD/hour per GPU), by partition hardware. These are
+# approximate public-cloud estimates used ONLY for the "saved vs cloud" figure on the
+# dashboard — they are not official OSU rates. Adjust to taste.
 RATES = {"dgxh": 4.00, "gpu": 1.50, "eecs": 0.50, "dgx2": 2.00, "share": 1.50, "ampere": 1.50, "preempt": 1.50}
 
 def parse_elapsed(s):

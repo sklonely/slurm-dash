@@ -261,7 +261,7 @@ can cause lock contention during job-churn bursts. Mitigations:
 - **Two-tier (planned):** run one shared collector that does the cluster-wide
   dump once and serves the JSON; each member's dashboard reads that shared view
   and only queries SLURM for *their own* jobs. This collapses cluster-wide load
-  from N to 1. (Not yet wired -- see `SHARED_STATUS_URL` issue.)
+  from N to 1. (Planned; not yet implemented.)
 
 ## Troubleshooting
 
