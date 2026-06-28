@@ -3,7 +3,7 @@
 # Usage:
 #   bash collect.sh           # smart one-shot (skip if queue unchanged)
 #   bash collect.sh --force   # force full dump
-#   bash collect.sh --loop    # continuous (every 15s, smart)
+#   bash collect.sh --loop    # continuous (every 60s, smart)
 #
 # Output: data/hpc_status.json (consumed by web/index.html)
 #
@@ -87,14 +87,14 @@ queue_hash() {
     # Prefix a constant so "no jobs" hashes to a stable, non-empty value (so it
     # short-circuits normally instead of colliding with EMPTY_HASH; a genuine SSH
     # failure is already caught above by ssh_retry's non-zero return).
-    printf 'gmem|%s' "$(printf '%s\n' "$raw" | awk -F'|' '
+    printf 'sd|%s' "$(printf '%s\n' "$raw" | awk -F'|' '
         { id=$1; sub(/_.*/,"",id); base[id]=1; if ($2=="RUNNING") run[id]=1 }
         END { for (id in base) print id":"(run[id]?"R":"P") }' | sort)" \
         | _md5 2>/dev/null | cut -d' ' -f1
 }
 
 # Change-driven (event-like) refresh policy. The cheap queue_hash probe runs
-# every kick (~15s, ~1 squeue); the heavy ~20-query full dump only fires when:
+# every kick (~15s, ~1 squeue); the heavy ~26-query full dump only fires when:
 #   - the queue actually CHANGED (job in/out, position shift), but no more often
 #     than MIN_FULL_DUMP_SEC apart so a churning queue can't hammer slurmdbd; or
 #   - the JSON is older than MAX_STALE_SEC -- a slow safety net that refreshes the

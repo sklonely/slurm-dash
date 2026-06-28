@@ -73,7 +73,7 @@ sed -i '' "s/^SLURM_USER=.*/SLURM_USER=$NETID/" config.env
 
 # Verify it is set to a real value (not a placeholder):
 grep '^SLURM_USER=' config.env
-grep -q '^SLURM_USER=<' config.env && echo "STILL A PLACEHOLDER — substitute the real netID"
+grep -qE '^SLURM_USER=$' config.env && echo "STILL EMPTY — substitute the real netID"
 ```
 (Optional: `SLURM_GROUP`, `SSH_IDENTITY`, `DASHBOARD_PORT` — sensible defaults exist.
 Gateway/partitions/rates are baked in for the OSU cluster.)
@@ -144,6 +144,8 @@ Then wait ~3 seconds for the server to come up.
 
 ## 5. Verify it serves
 
+If you changed `DASHBOARD_PORT` in config.env, use that port below instead of 8899.
+
 Startup is async; use a retry loop:
 ```bash
 for i in $(seq 1 10); do
@@ -159,6 +161,8 @@ python3 -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8899/'
 
 ## 6. Open the dashboard
 
+If you changed `DASHBOARD_PORT` in config.env, use that port below instead of 8899.
+
 - macOS: `open http://localhost:8899`
 - Linux: `xdg-open http://localhost:8899`
 - WSL: open `http://localhost:8899` in the **Windows** browser (WSL2 forwards localhost).
@@ -166,7 +170,7 @@ python3 -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8899/'
 Then report completion to the user, e.g.:
 ```
 [6/6 Done] dashboard live at http://localhost:8899 · watchdog running (health badge +
-cluster up/down alerts) · logs size-capped. Open that URL in your browser.
+cluster up/down alerts) · logs size-capped (macOS) / journald (Linux). Open that URL in your browser.
 ```
 
 ---

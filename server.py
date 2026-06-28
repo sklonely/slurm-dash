@@ -4,10 +4,11 @@ OSU SLURM dashboard server.
 
 Serves static dashboard files from ./web plus API endpoints:
 
-    GET /api/refresh        -- exec ./collect.sh --force, return updated JSON
+    GET /api/refresh        -- kick a throttled smart dump (collect.sh, no --force), return updated JSON
     GET /api/status         -- return cached data/hpc_status.json (no remote call)
     GET /api/health         -- return data/hpc_watchdog.json (no remote call)
     GET /api/config         -- return {"user":..., "group":...} from env
+    GET /api/debug          -- refresher status (inflight / throttle / last_error)
     GET /api/joblog/stream  -- SSE live tail -F of a job's StdOut/StdErr (one
                                persistent SSH channel per viewer; see below)
 

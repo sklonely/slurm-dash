@@ -332,7 +332,7 @@ WDUNIT
         echo "  watchdog: slurm-dash-watchdog  (health badge + cluster up/down notifications)"
         echo "    unit:   $WD_UNIT_FILE"
         echo "    log:    journalctl --user -u slurm-dash-watchdog -f"
-        echo "  Logs are size-capped at LOG_MAX_BYTES (default 5 MB); one .1 backup kept."
+        echo "  Logs: journalctl --user -u slurm-dash (cap with journald SystemMaxUse=)."
         echo ""
         echo "Dashboard is running at:"
         echo "  http://localhost:${DASHBOARD_PORT}"

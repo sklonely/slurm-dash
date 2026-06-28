@@ -192,7 +192,7 @@ It checks, in order:
    - *key not authorized* -> offers to `ssh-copy-id` your **public** key to the cluster
      (you type your OSU password once; OSU's gateway + submit **share your home dir**,
      so that single copy authorizes **both** hops -- your private key never leaves your machine).
-   - *can't reach the gateway* -> reminds you to get on campus Wi-Fi / OSU VPN.
+   - *can't reach the gateway* -> access.engr is public, so it's a your-side network issue (offline / captive-portal Wi-Fi, or your network blocks outbound port 22); OSU VPN only if a port-22-blocking network is your only option.
    - *Duo / 2FA* -> tells you to warm up the connection once interactively.
 
 Re-run `./doctor.sh` any time the connection breaks. (Which hop does the key go to?
@@ -203,11 +203,13 @@ Both -- but you only ever install **one local key** and copy its public half **o
 | Component      | File          | Purpose |
 |----------------|---------------|---------|
 | **Server**     | `server.py`   | HTTP server serving `web/` + API endpoints (`/api/refresh`, `/api/status`, `/api/health`, `/api/config`, `/api/joblog/stream`). |
-| **Collector**   | `collect.sh`  | SSH into the submit node, run ~20 SLURM queries, render JSON to `data/hpc_status.json`. Smart change-detection: only does the heavy dump when your queue actually changes. |
-| **Watchdog**   | `watchdog.py` | Probes the submit node every 5 min, writes `data/hpc_watchdog.json`, fires desktop notifications on state transitions (macOS: osascript, Linux: notify-send). Auto-installed as a second service by `install.sh` (powers the `/api/health` badge). Also rotates `server.log` and `watchdog.log` via copytruncate at `LOG_MAX_BYTES` (default 5 MB, one `.1` backup). |
+| **Collector**   | `collect.sh`  | SSH into the submit node, run ~26 SLURM queries, render JSON to `data/hpc_status.json`. Smart change-detection: only does the heavy dump when your queue actually changes (or on a ~5-min safety-net refresh for slow cluster data). |
+| **Watchdog**   | `watchdog.py` | Probes the submit node every 5 min, writes `data/hpc_watchdog.json`, fires desktop notifications on state transitions (macOS: osascript, Linux: notify-send). Auto-installed as a second service by `install.sh` (powers the `/api/health` badge). Also rotates `server.log` and `watchdog.log` via copytruncate at `LOG_MAX_BYTES` (default 5 MB, one `.1` backup) (macOS/run.sh file logs only; Linux uses journald). |
 | **Runner**     | `run.sh`      | Universal foreground launcher. Works on any OS. Use when you don't have (or don't want) a service manager. |
 | **Frontend**   | `web/index.html` | React SPA that fetches JSON from the API endpoints and renders the dashboard. |
 | **SSH config** | `ssh_config`  | Generated from `ssh_config.example` at install time. Dedicated ControlMaster for the dashboard (isolated from your interactive SSH). |
+
+The dashboard also shows a "Saved vs Cloud" estimate using approximate public-cloud GPU rates (not OSU billing).
 
 ### SSE job-log streaming
 
@@ -241,13 +243,13 @@ same `slurmctld` adds up. Know the load profile before everyone installs it:
 |-----------|-----------|
 | Browser tab **closed** | watchdog only -- **2 RPCs / 5 min**. Negligible. |
 | Tab **open**, your jobs unchanged | one cheap `squeue -u you` per refresh, throttled to >=15s -> **~1 query / 15s**. |
-| Your jobs **change state** | one **heavy dump = ~41 RPCs** (cluster-wide `squeue -p ...`, `sinfo`, `sacct`, ...). |
+| Your jobs **change state** | one **heavy dump = ~26 SLURM RPCs** (cluster-wide `squeue -p ...`, `sinfo`, `sacct`, ...). |
 
-What keeps it light: (1) **change-detection** -- the 41-query dump only fires when
+What keeps it light: (1) **change-detection** -- the ~26-query dump only fires when
 *your own* jobs change state, not on every refresh; (2) the **15s throttle**;
 (3) a persistent **SSH ControlMaster** so all queries share one connection.
 
-Warning: **Caveat for many simultaneous users:** the ~13 cluster-wide queries in the
+Warning: **Caveat for many simultaneous users:** the ~23 cluster-wide queries in the
 heavy dump are identical across users, so N people each fetching them means N
 times the same load on `slurmctld` (and `sacct` hits `slurmdbd`). With a whole lab this
 can cause lock contention during job-churn bursts. Mitigations:
@@ -279,7 +281,7 @@ can cause lock contention during job-churn bursts. Mitigations:
 
 Logs: `data/server.log` (server) and `data/watchdog.log` (watchdog, macOS/nohup only).
 For systemd: `journalctl --user -u slurm-dash -f` / `journalctl --user -u slurm-dash-watchdog -f`.
-Logs are size-capped at `LOG_MAX_BYTES` (default 5 MB) by the watchdog; one `.1` backup is kept.
+Logs are size-capped at `LOG_MAX_BYTES` (default 5 MB) by the watchdog; one `.1` backup is kept (macOS / `run.sh` only; under Linux systemd, logs go to the journal -- cap with journald, e.g. `SystemMaxUse=`).
 
 ## Uninstall
 

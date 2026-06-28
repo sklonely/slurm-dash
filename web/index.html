@@ -953,7 +953,7 @@ function Account({ a }) {
         <div className="val tnum">{a.dgxh_quota.used}<span className="unit">/{a.dgxh_quota.total}{a.dgxh_quota.unit}</span></div>
         <div className="sub dim">max per submit</div>
       </div>
-      <div className="cell">
+      <div className="cell" title="Approx public-cloud GPU rates — not OSU billing">
         <div className="lbl">Saved vs Cloud</div>
         <div className="val tnum">${a.savings.usd}</div>
         <div className="sub dim">{a.savings.gpu_hours} GPU-h this month{a.savings.period ? ` (${a.savings.period})` : ''}</div>
