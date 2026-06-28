@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -480,7 +480,7 @@ function fmtTimeLimit(seconds) {
   return `${h}:${String(m).padStart(2,'0')}:00`;
 }
 
-// "約 13h 後" + abs "明天 09:00"
+// "in ~13h" + abs "tomorrow 09:00"
 function fmtRelativeAbs(seconds, now = Date.now()) {
   if (!seconds || seconds < 60) return { rel: '< 1 min', abs: '' };
   const future = new Date(now + seconds * 1000);
@@ -491,13 +491,13 @@ function fmtRelativeAbs(seconds, now = Date.now()) {
   const isTomorrow = futureDay.getTime() === tomorrow.getTime();
   const hh = String(future.getHours()).padStart(2,'0'), mm = String(future.getMinutes()).padStart(2,'0');
   let rel;
-  if (seconds < 3600)         rel = `約 ${Math.round(seconds/60)} min 後`;
-  else if (seconds < 86400)   rel = `約 ${Math.round(seconds/3600)}h 後`;
-  else if (seconds < 86400*2) rel = `明天`;
-  else                        rel = `${Math.round(seconds/86400)} 天後`;
+  if (seconds < 3600)         rel = `in ${Math.round(seconds/60)} min`;
+  else if (seconds < 86400)   rel = `in ${Math.round(seconds/3600)}h`;
+  else if (seconds < 86400*2) rel = `tomorrow`;
+  else                        rel = `in ${Math.round(seconds/86400)}d`;
   let abs;
   if (sameDay)         abs = `${hh}:${mm}`;
-  else if (isTomorrow) abs = `明天 ${hh}:${mm}`;
+  else if (isTomorrow) abs = `tomorrow ${hh}:${mm}`;
   else                 abs = `${future.getMonth()+1}/${future.getDate()} ${hh}:${mm}`;
   return { rel, abs };
 }
@@ -509,10 +509,10 @@ function loadCategory(pct) {
 }
 
 // Slurm node state → whether the node accepts new jobs.
-//   draining/drained → 排空中/已排空，不收新任務
-//   down/fail/unknown → 離線
-//   reserved/maint    → 保留中
-//   idle/mixed/allocated/completing → 正常接受新任務
+//   draining/drained -> draining/drained, not accepting new jobs
+//   down/fail/unknown -> offline
+//   reserved/maint    -> reserved
+//   idle/mixed/allocated/completing -> accepting new jobs
 function nodeStatus(state) {
   // Strip Slurm state-flag suffixes (* ~ # ! % $ @ ^ + -) before matching.
   const s = (state || '').toLowerCase().replace(/[*~#!%$@^+-]+$/, '').trim();
@@ -1008,17 +1008,17 @@ function DeviceMap({ partitions, others, vertical }) {
 function ResChips({ gpuN, gpuKind, cpuN, vramGb }) {
   const chips = [];
   if (gpuN > 0) chips.push(
-    <span key="g" className="rchip gpu" title="GPU 數量">
+    <span key="g" className="rchip gpu" title="GPU count">
       <span className="lbl">GPU</span>{gpuKind}×{gpuN}
     </span>
   );
   if (cpuN > 0) chips.push(
-    <span key="c" className="rchip cpu" title="CPU 核心數">
+    <span key="c" className="rchip cpu" title="CPU cores">
       <span className="lbl">CPU</span>{cpuN}c
     </span>
   );
   if (vramGb > 0) chips.push(
-    <span key="v" className="rchip mem" title="GPU 顯存(以 GPU 規格估算)">
+    <span key="v" className="rchip mem" title="GPU memory (est. from GPU model)">
       <span className="lbl">VRAM</span>{vramGb >= 100 ? Math.round(vramGb) : vramGb}G
     </span>
   );
@@ -1033,7 +1033,7 @@ function RunCard({ j, now, base }) {
   const late = j.queue_pos && j.queue_total && j.queue_pos > j.queue_total * 0.9;
   return (
     <div className={'run-card clickable ' + (late ? 'late' : '')}
-         title="點擊看 live log" onClick={() => openJobLog(j.id, j.name)}>
+         title="Click to view live log" onClick={() => openJobLog(j.id, j.name)}>
       <div className="top">
         <span className="nm" title={j.name}>{j.name}</span>
         <span className="id">#{j.id}</span>
@@ -1259,7 +1259,7 @@ function FullQueue({ rows, totalRunning, totalPending }) {
       <div className="disc-h" onClick={() => setOpen(o => !o)}>
         <div className="left">
           <span className="chev">▸</span>
-          <span className="title">DGXH 完整 queue</span>
+          <span className="title">DGXH full queue</span>
           <span className="sub">{totalRunning} running · {totalPending} waiting</span>
         </div>
         <div className="right dim">{myMineRunning} run / {myMinePending} pending of mine</div>
@@ -1284,7 +1284,7 @@ function FullQueue({ rows, totalRunning, totalPending }) {
               return (
                 <tr key={(r.pos||'r')+r.id}
                     className={(r.mine ? 'mine' : '') + (r.running ? ' clickable-row' : '')}
-                    title={r.running ? '點擊看 live log' : undefined}
+                    title={r.running ? 'Click to view live log' : undefined}
                     onClick={r.running ? () => openJobLog(r.id, r.name) : undefined}>
                   <td>{r.running ? '●' : `#${r.pos}`}</td>
                   <td>{r.id}</td>
@@ -1390,7 +1390,7 @@ function JobLogModal() {
           {meta && <span className={'jl-state' + (isRun ? ' run' : '')}>{meta.state}</span>}
           <span style={{flex:1}} />
           <span className="jl-status">{status}</span>
-          <button className="jl-close" onClick={close} title="關閉 (Esc)">✕</button>
+          <button className="jl-close" onClick={close} title="Close (Esc)">✕</button>
         </div>
         <pre className="jl-body" ref={boxRef} onScroll={onScroll}>
           {lines.length ? lines.join('\n')
@@ -1759,7 +1759,7 @@ function App() {
         <>
           <div className="sec2">
             <h2>SHARE nodes <span className="count">{shareMine > 0 ? `★ ${shareMine} jobs` : `${data.share_nodes.length} GPU nodes`}</span></h2>
-            <span className="hint">僅列有 GPU 的節點 · 純 CPU 已隱藏</span>
+            <span className="hint">GPU nodes only · pure-CPU hidden</span>
           </div>
           <NodePanel title="SHARE" sub={`${data.share_nodes.length} GPU nodes · A40 / mixed`} mineHere={shareMine > 0 ? `${shareMine} of yours` : null} nodes={data.share_nodes} collapsible defaultOpen={shareMine > 0} />
         </>
@@ -1769,7 +1769,7 @@ function App() {
         <>
           <div style={{margin:'24px 0 8px'}}>
             <span style={{fontSize:10.5, color:'var(--text-3)', fontFamily:'var(--font-mono)', textTransform:'uppercase', letterSpacing:'.08em', fontWeight:600}}>
-              ── 需要時才看 ──
+              ── on demand ──
             </span>
           </div>
           <FullQueue rows={data.dgxh_queue_rows} totalRunning={data.dgxh_total_running} totalPending={data.dgxh_total_pending} />
