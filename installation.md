@@ -7,6 +7,26 @@ marked **[ASK USER]**; do not try to do them yourself.
 
 ---
 
+## Communicating with the user
+
+Keep the user informed throughout — never work silently:
+
+1. **Report each stage.** Before a step, say which stage you're on and what you're about to
+   do; after it, say the result, then continue. Use a short progress line, e.g.:
+   ```
+   [2/6 Configure] writing config.env, setting your netID … ✓ (SLURM_USER=<netid>)
+   [3/6 SSH]       needs you to do one thing — see below
+   ```
+2. **At any human-needed step, explain clearly** — never just pause. State (a) WHAT you need
+   and WHY you can't do it yourself, (b) the EXACT action (which window, which command),
+   (c) what SUCCESS looks like, (d) ask them to report back — then **you re-verify** with a
+   read-only check before continuing (don't just trust "done").
+
+The two human-in-the-loop points are the **netID** (step 2) and the **OSU password + Duo**
+(step 3). Everything else you do yourself.
+
+---
+
 ## 0. Preconditions
 
 ```bash
@@ -64,21 +84,48 @@ The dashboard reaches the cluster over two hops (your machine → `access.engr.o
 → a submit node) via ProxyJump. The doctor sets this up for the user — they do **not** need
 to know the jump-host details.
 
-**No-TTY note**: If you (the agent) do NOT control an interactive terminal the user
-can type into, STOP here and tell the user to run `./doctor.sh --auto` themselves in
-their own terminal (they'll be asked for their OSU password once), then resume at step 4.
+`./doctor.sh --auto` generates an SSH key if absent, copies your **public** key onto your
+OSU ENGR account, and tests the path. The key copy is the **one and only** time a password
+is needed: `access.engr` is OSU's shared **public** jump host, and the key lands in your
+shared `/nfs/stak` home (which the HPC nodes also mount), so **one copy authorizes both
+hops**. After that every connection is key-only — **no password, no Duo, ever again** (key
+auth bypasses Duo).
 
+**This step needs the human (password + Duo) and you usually cannot do it yourself** —
+ssh-copy-id prompts for the OSU password on a real terminal + a Duo approval on the user's
+phone; an agent has neither. `doctor.sh` detects a missing terminal and **stops with a
+hand-off instead of hanging**. So tell the user clearly (template):
+
+> This connects the dashboard to the cluster. Your SSH key needs to go onto your OSU account
+> **once**, which needs your **OSU password + a Duo approval** — I can't type your password or
+> approve Duo for you. Please open **your own terminal** and run:
+> `cd <install-dir> && ./doctor.sh --auto`
+> It asks your OSU password (type it **there**, never to me — I never see it), then Duo
+> (approve on your phone). When you see `✅ Connected through the gateway to the submit node`,
+> tell me. You only do this once. (Want the exact raw commands instead? `./doctor.sh --manual`
+> prints them and changes nothing.)
+
+If the key is **already** authorized (re-install), `--auto` just connects with no prompt and
+you can run it yourself.
+
+**After the user reports back, re-verify — don't trust "done":**
 ```bash
-./doctor.sh --auto
+./doctor.sh --manual    # read-only; needs no terminal; prints the current state
 ```
-It will: generate an SSH key in `~/.ssh` if absent → copy the **public** key to the cluster
-(**this prompts for the user's OSU password — pause and let the user type it**) → test the
-full path. Success line: `✅ Connected through the gateway to the submit node.`
+Only continue to step 4 when it prints `✅ Connected`. Otherwise relay the matching fix:
 
-If it reports:
-- *can't reach the gateway* → the user must be on OSU Wi-Fi / OSU VPN; retry.
-- *Duo / 2FA* → the user runs `ssh -F ssh_config dash-gateway` once interactively to complete
-  2FA, then you re-run `./doctor.sh`.
+| doctor says | what it means | tell the user to |
+|---|---|---|
+| `✅ Connected` | key works through both hops | nothing — continue to step 4 |
+| `AUTH` | key not yet authorized on your OSU account | run `./doctor.sh --auto` in their terminal (OSU password once + Duo) |
+| `NET` → *DNS can't resolve* | offline / captive-portal Wi-Fi not logged into | get online (open any site / accept the Wi-Fi portal), then retry |
+| `NET` → *port 22 blocked* | their network blocks outbound SSH — common on hotel/guest/corp Wi-Fi | switch network (a phone hotspot usually works); OSU VPN only if that's the sole option |
+| `NET` → *reachable but failed* | transient, or the submit node behind the gateway | wait, re-run; if it persists, share the `--manual` SSH error |
+| Duo / 2FA (in `OTHER`) | the gateway wants interactive 2FA | run `ssh -F ssh_config -o BatchMode=no dash-gateway` once to complete Duo, then retry |
+
+Note: `access.engr` is **publicly reachable** (a shared OSU jump host), so a NET failure is a
+your-side network issue — **not** "you must be on VPN". VPN only helps if your local network
+blocks outbound port 22.
 
 ## 4. Install (auto-start service)
 
@@ -115,6 +162,12 @@ python3 -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8899/'
 - macOS: `open http://localhost:8899`
 - Linux: `xdg-open http://localhost:8899`
 - WSL: open `http://localhost:8899` in the **Windows** browser (WSL2 forwards localhost).
+
+Then report completion to the user, e.g.:
+```
+[6/6 Done] dashboard live at http://localhost:8899 · watchdog running (health badge +
+cluster up/down alerts) · logs size-capped. Open that URL in your browser.
+```
 
 ---
 
