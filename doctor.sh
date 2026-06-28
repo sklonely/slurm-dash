@@ -78,10 +78,41 @@ classify() {  # prints OK | AUTH | NET | OTHER:::<stderr>
   if [[ "$out" == *__DASH_OK__* ]]; then echo "OK"; return; fi
   case "$out" in
     *"Permission denied"*) echo "AUTH" ;;
-    *"Could not resolve"*|*"Network is unreachable"*|*"timed out"*|*"Operation timed out"*|*"No route to host"*) echo "NET" ;;
+    *"Could not resolve"*|*"Network is unreachable"*|*"timed out"*|*"Operation timed out"*|*"No route to host"*|*"Connection refused"*) echo "NET" ;;
     *"Host key verification failed"*) echo "HOSTKEY" ;;
     *) echo "OTHER:::$out" ;;
   esac
+}
+
+# Differential diagnosis for NET failures. access.engr is a PUBLIC host
+# (128.193.x.x), so "can't reach it" is almost always a local-side problem, NOT a
+# missing VPN. Probe the two layers (DNS, then TCP/22) with python3 (portable; no
+# nc/timeout needed) and report the SPECIFIC cause + fix. Only the gateway is
+# probed — the submit node sits BEHIND it (ProxyJump) and is not directly routable.
+diagnose_net() {
+  echo "   ✗ Can't reach the gateway ($GATEWAY) — finding where it fails…"
+  if ! python3 -c "import socket; socket.gethostbyname('$GATEWAY')" 2>/dev/null; then
+    echo "     → DNS: cannot resolve '$GATEWAY'."
+    echo "       Cause: you're offline, or DNS is down/hijacked (e.g. a captive-portal Wi-Fi"
+    echo "              you haven't logged into yet)."
+    echo "       Fix:   get online (open any website to confirm / accept the Wi-Fi portal),"
+    echo "              then re-run ./doctor.sh."
+    return
+  fi
+  echo "     • DNS resolves ✓"
+  if ! python3 -c "import socket; s=socket.create_connection(('$GATEWAY',22),6); s.close()" 2>/dev/null; then
+    echo "     → SSH port 22: '$GATEWAY' resolves, but a connection to port 22 is blocked/refused."
+    echo "       Cause: your network/firewall blocks OUTBOUND SSH (port 22) — common on hotel,"
+    echo "              guest, conference or corporate Wi-Fi. (Rarely: the gateway itself is down.)"
+    echo "       Fix:   switch network (a phone hotspot usually works); if only a port-22-blocking"
+    echo "              network is available, connect the OSU VPN to tunnel out. Then re-run ./doctor.sh."
+    return
+  fi
+  echo "     • Gateway port 22 reachable ✓"
+  echo "     → The gateway is reachable but the SSH session still failed before auth."
+  echo "       Cause: usually a transient hiccup, or the submit node behind the gateway."
+  echo "       Fix:   wait a moment and re-run ./doctor.sh; if it persists, run"
+  echo "              './doctor.sh --manual' and share the SSH error."
 }
 
 for attempt in 1 2 3; do
@@ -141,9 +172,7 @@ for attempt in 1 2 3; do
         echo "   Skipped." >&2; exit 1
       fi ;;
     NET)
-      echo "   ✗ Can't reach $GATEWAY."
-      echo "     The gateway is normally reachable only on the OSU network — connect to campus"
-      echo "     Wi-Fi or the OSU VPN, then re-run ./doctor.sh."
+      diagnose_net
       exit 1 ;;
     OTHER:::*)
       echo "   ✗ Couldn't connect. SSH said:"
